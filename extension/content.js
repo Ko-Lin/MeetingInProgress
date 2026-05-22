@@ -728,10 +728,11 @@ function updateOverlayProgress(agenda, index, overallProgress) {
     const previewName = overlay.querySelector('.mp-current-item-preview-name');
     const previewBar = overlay.querySelector('.mp-current-item-preview-bar .mp-fill');
     const previewTime = overlay.querySelector('.mp-current-item-preview-time');
+    const previewContainer = overlay.querySelector('.mp-current-item-preview');
 
     if (previewName) previewName.textContent = currentItem.description;
 
-    if (previewBar && previewTime) {
+    if (previewBar && previewTime && previewContainer) {
       const now = Date.now();
       const totalElapsedMs = now - agenda[0].startTime;
       const totalElapsedMinutes = totalElapsedMs / (1000 * 60);
@@ -748,6 +749,15 @@ function updateOverlayProgress(agenda, index, overallProgress) {
       const minutes = Math.floor(itemElapsed);
       const seconds = Math.round((itemElapsed - minutes) * 60);
       previewTime.textContent = `${minutes}m / ${currentItem.minutes}m`;
+
+      // Color red when in overtime
+      if (itemElapsed > currentItem.minutes) {
+        previewContainer.classList.add('mp-overtime');
+        previewBar.style.background = '#ea4335';
+      } else {
+        previewContainer.classList.remove('mp-overtime');
+        previewBar.style.background = '#1f73e8';
+      }
     }
   }
 }
@@ -1128,6 +1138,18 @@ function injectStyles() {
       font-size: 11px;
       color: #5f6368;
       white-space: nowrap;
+    }
+
+    .mp-current-item-preview.mp-overtime {
+      border-bottom-color: #ea4335;
+    }
+
+    .mp-current-item-preview.mp-overtime .mp-current-item-preview-name {
+      color: #ea4335;
+    }
+
+    .mp-current-item-preview.mp-overtime .mp-current-item-preview-time {
+      color: #ea4335;
     }
 
     @keyframes pulseOutline {
