@@ -65,12 +65,22 @@ function setupDrawerHandlers(overlay) {
   const minutesInput = overlay.querySelector('.mp-overlay-minutes-input');
   const pasteInput = overlay.querySelector('.mp-overlay-paste-input');
   const startTimeInput = overlay.querySelector('.mp-overlay-start-time-input');
+  const nowBtn = overlay.querySelector('.mp-overlay-now-btn');
+
+  // Function to set time to current time
+  const setCurrentTime = () => {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    startTimeInput.value = `${hours}:${minutes}`;
+    console.log('[Meeting Progress] Start time set to current time');
+  };
 
   // Set current time as default in the time input
-  const now = new Date();
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  startTimeInput.value = `${hours}:${minutes}`;
+  setCurrentTime();
+
+  // Add event listener for "Now" button
+  nowBtn.addEventListener('click', setCurrentTime);
 
   // Toggle drawer visibility with animation
   drawerToggle.addEventListener('click', () => {
@@ -364,8 +374,11 @@ function injectOverlay() {
           <!-- Start Time Section -->
           <div class="mp-drawer-section">
             <label class="mp-drawer-label">Meeting Start Time (Optional)</label>
-            <input type="time" class="mp-overlay-start-time-input" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px;">
-            <div style="font-size: 11px; color: #5f6368; margin-top: 4px;">Leave blank to use current time</div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <input type="time" class="mp-overlay-start-time-input" style="flex: 1; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px;">
+              <button class="mp-overlay-now-btn" style="padding: 8px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; white-space: nowrap;">Now</button>
+            </div>
+            <div style="font-size: 11px; color: #5f6368; margin-top: 4px;">Click "Now" to set current time</div>
           </div>
 
           <!-- Start Timer Section -->
