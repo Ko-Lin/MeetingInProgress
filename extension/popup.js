@@ -311,7 +311,7 @@ function importFromDescription() {
     if (!tabs || !tabs[0] || !tabs[0].url?.includes('meet.google.com')) {
       importBtn.disabled = false;
       importBtn.textContent = '📋 Import from Description';
-      alert('Please run this from a Google Meet tab');
+      console.log('[Meeting Progress] Not on a Google Meet tab');
       return;
     }
 
@@ -321,14 +321,14 @@ function importFromDescription() {
       importBtn.textContent = '📋 Import from Description';
 
       if (chrome.runtime.lastError || !response?.success) {
-        alert('No meeting description found. Try using "Quick Parse" instead - paste your agenda items there.');
+        console.log('[Meeting Progress] Failed to extract meeting description');
         return;
       }
 
       const items = response.items || [];
 
       if (items.length === 0) {
-        alert('No agenda items detected in the description. Use "Quick Parse" to manually paste:\n\nWelcome 5 min\nDemo 15 min\nQ&A 10 min');
+        console.log('[Meeting Progress] No agenda items detected in description');
         return;
       }
 
@@ -347,8 +347,10 @@ function importFromDescription() {
       });
 
       if (added > 0) {
+        console.log(`[Meeting Progress] Imported ${added} agenda items from description`);
         saveAgenda();
         renderAgenda();
+        console.log('[Meeting Progress] Agenda rendered with click handlers attached');
 
         // Re-enable start button if timer isn't running
         const startBtn = document.getElementById('startBtn');
