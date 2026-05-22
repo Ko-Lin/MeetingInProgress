@@ -19,7 +19,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       renderAgendaItems(overlay);
     }
 
-    updateOverlayProgress(request.agenda, request.currentIndex, request.overallProgress);
+    updateOverlayProgress(request.agenda, request.currentIndex, request.overallProgress, request.meetingEndTime);
     sendResponse({ success: true });
   } else if (request.action === 'injectOverlay') {
     const existing = document.getElementById('meeting-progress-overlay');
@@ -656,7 +656,7 @@ function updateOverlayVisibility() {
   }
 }
 
-function updateOverlayProgress(agenda, index, overallProgress) {
+function updateOverlayProgress(agenda, index, overallProgress, meetingEndTime) {
   const overlay = document.getElementById('meeting-progress-overlay');
   if (!overlay) return;
 
@@ -814,9 +814,9 @@ function updateOverlayProgress(agenda, index, overallProgress) {
     // Scheduled end time
     let scheduledEndMs, scheduledEndDate, scheduledEndStr;
 
-    if (agenda.meetingEndTime) {
+    if (meetingEndTime) {
       // Use the specified end time from template
-      const [endHours, endMinutes] = agenda.meetingEndTime.split(':').map(Number);
+      const [endHours, endMinutes] = meetingEndTime.split(':').map(Number);
       scheduledEndDate = new Date(startTimeMs);
       scheduledEndDate.setHours(endHours, endMinutes, 0, 0);
       scheduledEndMs = scheduledEndDate.getTime();

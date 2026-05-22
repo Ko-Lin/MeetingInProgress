@@ -91,7 +91,8 @@ function updateOverlay() {
           action: 'updateProgress',
           agenda: currentAgenda,
           currentIndex,
-          overallProgress
+          overallProgress,
+          meetingEndTime: currentAgenda.meetingEndTime
         },
         (response) => {
           // Silently handle errors if content script isn't ready
