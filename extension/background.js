@@ -78,7 +78,8 @@ function updateOverlay() {
   const totalElapsedMinutes = totalElapsedMs / (1000 * 60);
 
   // Overall progress is based on total elapsed time, not affected by navigation
-  const overallProgress = Math.min(totalElapsedMinutes / totalMinutes, 1);
+  // Continue counting into overtime (don't cap at 1.0)
+  const overallProgress = totalElapsedMinutes / totalMinutes;
 
   chrome.tabs.query({ url: 'https://meet.google.com/*' }, (tabs) => {
     tabs.forEach((tab) => {
