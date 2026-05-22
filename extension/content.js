@@ -230,7 +230,7 @@ function renderAgendaItems(overlay) {
   const agendaHTML = currentAgenda
     .map(
       (item, index) => `
-    <div class="mp-item ${index === currentIndex ? 'mp-item-active' : ''} ${index < currentIndex ? 'mp-item-completed' : ''}">
+    <div class="mp-item ${index === currentIndex ? 'mp-item-active' : ''} ${index < currentIndex ? 'mp-item-completed' : ''}" data-item-id="${item.id}">
       <div class="mp-item-header">
         <div class="mp-item-name">${item.description}</div>
         <div class="mp-item-time-info">
@@ -238,6 +238,7 @@ function renderAgendaItems(overlay) {
           <span class="mp-item-divider">/</span>
           <span class="mp-item-time">${item.minutes}m</span>
           <span class="mp-item-overtime" style="display: none;"></span>
+          <button class="mp-item-delete" data-item-id="${item.id}" title="Delete item" style="background: none; border: none; color: #ea4335; cursor: pointer; padding: 0; margin-left: 4px; font-size: 14px;">✕</button>
         </div>
       </div>
       <div class="mp-item-progress">
@@ -263,6 +264,32 @@ function renderAgendaItems(overlay) {
       <div class="mp-meeting-times" style="display: none;"></div>
     </div>
   `;
+
+  // Add delete button handlers
+  const deleteButtons = content.querySelectorAll('.mp-item-delete');
+  deleteButtons.forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const itemId = parseInt(btn.dataset.itemId);
+      deleteAgendaItemFromOverlay(itemId);
+    });
+  });
+}
+
+function deleteAgendaItemFromOverlay(itemId) {
+  // Remove item from currentAgenda
+  currentAgenda = currentAgenda.filter((item) => item.id !== itemId);
+
+  // Save updated agenda
+  chrome.storage.sync.set({ agenda: currentAgenda });
+
+  // Re-render the agenda items
+  const overlay = document.getElementById('meeting-progress-overlay');
+  if (overlay) {
+    renderAgendaItems(overlay);
+  }
+
+  console.log(`[Meeting Progress] Item ${itemId} deleted from overlay`);
 }
 
 function isUserScreenSharing() {
@@ -673,6 +700,20 @@ function injectStyles() {
 
     .mp-item-overtime .mp-item-name {
       color: #ea4335;
+    }
+
+    .mp-item-delete {
+      opacity: 0.5;
+      transition: opacity 0.2s, color 0.2s;
+    }
+
+    .mp-item-delete:hover {
+      opacity: 1;
+      color: #d33b27;
+    }
+
+    .mp-item:hover .mp-item-delete {
+      opacity: 0.7;
     }
 
     .mp-overall-section {
