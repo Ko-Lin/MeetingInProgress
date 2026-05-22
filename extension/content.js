@@ -582,7 +582,7 @@ function renderAgendaItems(overlay) {
   deleteButtons.forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const itemId = parseInt(btn.dataset.itemId);
+      const itemId = parseFloat(btn.dataset.itemId);
       deleteAgendaItemFromOverlay(itemId);
     });
   });
