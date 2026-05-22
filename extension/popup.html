@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meeting Progress</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #202124;
+      background: #f8f9fa;
+    }
+
+    .container {
+      padding: 16px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .settings-btn {
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    .section {
+      margin-bottom: 16px;
+    }
+
+    .section-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #5f6368;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    input[type="text"],
+    input[type="number"] {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus {
+      outline: none;
+      border-color: #1f73e8;
+      box-shadow: 0 0 0 3px rgba(31, 115, 232, 0.1);
+    }
+
+    button {
+      padding: 8px 16px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      background: white;
+      color: #1f73e8;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    button:hover {
+      background: #f8f9fa;
+      border-color: #1f73e8;
+    }
+
+    button.primary {
+      background: #1f73e8;
+      color: white;
+      border-color: #1f73e8;
+    }
+
+    button.primary:hover {
+      background: #1765cc;
+    }
+
+    button.danger {
+      color: #d33b27;
+      border-color: #d33b27;
+    }
+
+    button.danger:hover {
+      background: #fce8e6;
+    }
+
+    .agenda-list {
+      background: white;
+      border-radius: 4px;
+      border: 1px solid #dadce0;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .agenda-item {
+      display: flex;
+      align-items: center;
+      padding: 12px;
+      border-bottom: 1px solid #e8eaed;
+      gap: 8px;
+    }
+
+    .agenda-item:last-child {
+      border-bottom: none;
+    }
+
+    .agenda-item span {
+      flex: 1;
+      font-size: 13px;
+    }
+
+    .agenda-item .time {
+      color: #5f6368;
+      font-size: 12px;
+      min-width: 40px;
+      text-align: right;
+    }
+
+    .agenda-item .delete-btn {
+      background: none;
+      border: none;
+      color: #d33b27;
+      cursor: pointer;
+      padding: 4px;
+      font-size: 16px;
+    }
+
+    .agenda-item .delete-btn:hover {
+      opacity: 0.8;
+    }
+
+    .empty-state {
+      padding: 24px 16px;
+      text-align: center;
+      color: #80868b;
+      font-size: 13px;
+    }
+
+    .paste-area {
+      padding: 8px 12px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      background: white;
+      font-size: 12px;
+      color: #5f6368;
+      margin-top: 8px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 80px;
+      padding: 8px 12px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      resize: vertical;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #1f73e8;
+      box-shadow: 0 0 0 3px rgba(31, 115, 232, 0.1);
+    }
+
+    .button-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .button-group button {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Meeting Progress</h1>
+      <button class="settings-btn" id="settingsBtn" title="Settings">⚙️</button>
+    </div>
+
+    <div class="section">
+      <button id="injectBtn" style="width: 100%; margin-bottom: 12px; background: #fbbc04; color: #202124;">📍 Inject Overlay (if not showing)</button>
+    </div>
+
+    <div class="section">
+      <label class="section-label">Add Item</label>
+      <div class="input-group">
+        <input type="text" id="itemInput" placeholder="Item description">
+        <input type="number" id="minutesInput" placeholder="Min" min="1" max="120" style="width: 60px;">
+        <button class="primary" id="addBtn">Add</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <label class="section-label">Quick Parse</label>
+      <textarea id="pasteInput" placeholder="Paste lines like:&#10;Welcome 5 min&#10;Demo 15 min&#10;Q&A 10 min"></textarea>
+      <button id="parseBtn" style="width: 100%;">Parse and Add</button>
+    </div>
+
+    <div class="section">
+      <label class="section-label">Agenda</label>
+      <div class="agenda-list" id="agendaList">
+        <div class="empty-state">No items yet</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <button id="startBtn" class="primary" style="width: 100%;">Start Timer</button>
+      <button id="clearBtn" class="danger" style="width: 100%; margin-top: 8px;">Clear All</button>
+      <p style="font-size: 12px; color: #5f6368; margin-top: 12px; text-align: center;">
+        Keyboard shortcut: <strong>Option+N</strong> (Mac) or <strong>Alt+N</strong> (Windows) to advance items
+      </p>
+      <p style="font-size: 12px; color: #5f6368; margin-top: 8px; text-align: center;">
+        💡 Wrap-up suggestions with Claude API coming in Phase 4
+      </p>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
