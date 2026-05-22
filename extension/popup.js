@@ -116,7 +116,7 @@ function renderAgenda() {
   list.innerHTML = agenda
     .map(
       (item) => `
-    <div class="agenda-item" data-id="${item.id}">
+    <div class="agenda-item" data-id="${item.id}" style="cursor: pointer;">
       <span class="item-desc">${item.description}</span>
       <span class="time">${item.minutes}m</span>
       <button class="delete-btn" data-id="${item.id}" title="Remove item">✕</button>
@@ -136,10 +136,13 @@ function renderAgenda() {
   // Inline edit handler
   list.querySelectorAll('.agenda-item').forEach((itemEl) => {
     itemEl.addEventListener('click', (e) => {
-      if (e.target.classList.contains('delete-btn')) return;
+      // Check if clicking on delete button or its contents
+      if (e.target.closest('.delete-btn')) return;
+
       const id = parseInt(itemEl.dataset.id);
       const item = agenda.find((a) => a.id === id);
       if (item) {
+        console.log('[Meeting Progress] Editing item:', item);
         editItemInline(itemEl, item);
       }
     });
@@ -147,10 +150,20 @@ function renderAgenda() {
 }
 
 function editItemInline(itemEl, item) {
-  if (itemEl.classList.contains('editing')) return; // Already editing
+  console.log('[Meeting Progress] editItemInline called for:', item);
+
+  if (itemEl.classList.contains('editing')) {
+    console.log('[Meeting Progress] Already editing this item, ignoring click');
+    return;
+  }
 
   const desc = itemEl.querySelector('.item-desc');
   const timeEl = itemEl.querySelector('.time');
+
+  if (!desc || !timeEl) {
+    console.error('[Meeting Progress] Could not find description or time elements');
+    return;
+  }
 
   const originalDesc = item.description;
   const originalMins = item.minutes;
@@ -179,10 +192,15 @@ function editItemInline(itemEl, item) {
     const newDesc = descInput.value.trim();
     const newMins = parseInt(minsInput.value) || 0;
 
+    console.log('[Meeting Progress] Saving edit:', { newDesc, newMins });
+
     if (newDesc && newMins > 0) {
       item.description = newDesc;
       item.minutes = newMins;
       saveAgenda();
+      console.log('[Meeting Progress] Item updated and saved');
+    } else {
+      console.log('[Meeting Progress] Invalid input, not saving');
     }
 
     itemEl.classList.remove('editing');
@@ -190,21 +208,35 @@ function editItemInline(itemEl, item) {
   };
 
   descInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') saveEdit();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveEdit();
+    }
   });
 
   minsInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') saveEdit();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveEdit();
+    }
   });
 
   itemEl.classList.add('editing');
   desc.replaceWith(descInput);
   timeEl.replaceWith(minsInput);
-  descInput.focus();
-  descInput.select();
+
+  // Set focus after a brief delay to ensure DOM is updated
+  setTimeout(() => {
+    descInput.focus();
+    descInput.select();
+    console.log('[Meeting Progress] Input focused and selected');
+  }, 0);
 
   // Save on blur
-  const blurHandler = () => saveEdit();
+  const blurHandler = () => {
+    console.log('[Meeting Progress] Input blur, saving');
+    saveEdit();
+  };
   descInput.addEventListener('blur', blurHandler);
   minsInput.addEventListener('blur', blurHandler);
 }
