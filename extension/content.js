@@ -200,6 +200,7 @@ function overlayParseAndAdd(overlay) {
 
   // Clear the agenda to replace it
   currentAgenda = [];
+  currentIndex = 0;  // Reset index when parsing new agenda
 
   // Check if first line is a time (HH:MM format) - start time
   if (lines.length > 0 && timePattern.test(lines[0])) {
@@ -250,6 +251,7 @@ function overlayParseAndAdd(overlay) {
   } else if (lines.length > 0) {
     console.log('[Meeting Progress] No valid items found in parse');
   }
+}
 }
 
 function overlayDeleteItem(overlay, itemId) {
