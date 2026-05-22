@@ -70,30 +70,14 @@ function updateOverlay() {
 
   const now = Date.now();
 
-  // Calculate total time allocated and elapsed
+  // Calculate total time allocated
   const totalMinutes = currentAgenda.reduce((sum, item) => sum + item.minutes, 0);
-  let totalElapsedMinutes = 0;
-  let carryOverTime = 0;
 
-  // Sum elapsed time for all previous items (including overruns)
-  for (let i = 0; i < currentIndex; i++) {
-    const item = currentAgenda[i];
-    const itemElapsedMs = now - item.startTime;
-    const itemElapsedMinutes = itemElapsedMs / (1000 * 60);
-    totalElapsedMinutes += itemElapsedMinutes;
-    if (itemElapsedMinutes > item.minutes) {
-      carryOverTime += itemElapsedMinutes - item.minutes;
-    }
-  }
+  // Calculate actual elapsed time since meeting started (only once, independent of currentIndex)
+  const totalElapsedMs = now - currentAgenda[0].startTime;
+  const totalElapsedMinutes = totalElapsedMs / (1000 * 60);
 
-  // Add elapsed time for current item (including carry-over from previous items)
-  if (currentIndex < currentAgenda.length) {
-    const item = currentAgenda[currentIndex];
-    const elapsedMs = now - item.startTime;
-    const elapsedMinutes = elapsedMs / (1000 * 60);
-    totalElapsedMinutes += elapsedMinutes;
-  }
-
+  // Overall progress is based on total elapsed time, not affected by navigation
   const overallProgress = Math.min(totalElapsedMinutes / totalMinutes, 1);
 
   chrome.tabs.query({ url: 'https://meet.google.com/*' }, (tabs) => {

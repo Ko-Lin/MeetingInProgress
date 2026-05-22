@@ -104,15 +104,15 @@ function injectOverlay() {
           <button class="mp-close" aria-label="Close overlay">×</button>
         </div>
       </div>
+      <div class="mp-controls mp-controls-top">
+        <button class="mp-btn-prev" disabled>← Prev</button>
+        <button class="mp-btn-next" disabled>Next →</button>
+      </div>
       <div class="mp-content">
         <div class="mp-agenda-empty">Waiting for agenda...</div>
         <div class="mp-overall-bar">
           <div class="mp-progress" style="width: 0%"></div>
         </div>
-      </div>
-      <div class="mp-controls">
-        <button class="mp-btn-prev" disabled>← Prev</button>
-        <button class="mp-btn-next" disabled>Next →</button>
       </div>
       <div class="mp-suggestion-area" style="display: none; padding: 12px 16px; border-top: 1px solid #e8eaed; background: #f8f9fa; font-size: 12px; color: #202124; line-height: 1.4;"></div>
     </div>
@@ -453,6 +453,7 @@ function injectStyles() {
       max-height: 500px;
       display: flex;
       flex-direction: column;
+      gap: 0;
     }
 
     .mp-header {
@@ -675,8 +676,12 @@ function injectStyles() {
       display: flex;
       gap: 8px;
       padding: 12px 16px;
-      border-top: 1px solid #e8eaed;
       flex-shrink: 0;
+    }
+
+    .mp-controls-top {
+      border-bottom: 1px solid #e8eaed;
+      order: -1;
     }
 
     .mp-btn-prev,
@@ -755,8 +760,12 @@ function injectStyles() {
       display: none;
     }
 
-    .mp-container.mp-minimized .mp-controls {
+    .mp-container.mp-minimized .mp-suggestion-area {
       display: none;
+    }
+
+    .mp-container.mp-minimized .mp-controls-top {
+      display: flex;
     }
 
     .mp-container.mp-minimized {
