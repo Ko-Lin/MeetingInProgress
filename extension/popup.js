@@ -45,8 +45,8 @@ function addItem() {
   });
 
   saveAgenda();
-  itemInput.value = '';
-  minutesInput.value = '';
+  itemInput.value = ''; // Clear description
+  // Keep minutes value for adding multiple items with same duration
   itemInput.focus();
   renderAgenda();
 }
@@ -116,20 +116,97 @@ function renderAgenda() {
   list.innerHTML = agenda
     .map(
       (item) => `
-    <div class="agenda-item">
-      <span>${item.description}</span>
+    <div class="agenda-item" data-id="${item.id}">
+      <span class="item-desc">${item.description}</span>
       <span class="time">${item.minutes}m</span>
-      <button class="delete-btn" data-id="${item.id}">✕</button>
+      <button class="delete-btn" data-id="${item.id}" title="Remove item">✕</button>
     </div>
   `
     )
     .join('');
 
+  // Delete button handler
   list.querySelectorAll('.delete-btn').forEach((btn) => {
     btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       deleteItem(parseInt(e.target.dataset.id));
     });
   });
+
+  // Inline edit handler
+  list.querySelectorAll('.agenda-item').forEach((itemEl) => {
+    itemEl.addEventListener('click', (e) => {
+      if (e.target.classList.contains('delete-btn')) return;
+      const id = parseInt(itemEl.dataset.id);
+      const item = agenda.find((a) => a.id === id);
+      if (item) {
+        editItemInline(itemEl, item);
+      }
+    });
+  });
+}
+
+function editItemInline(itemEl, item) {
+  if (itemEl.classList.contains('editing')) return; // Already editing
+
+  const desc = itemEl.querySelector('.item-desc');
+  const timeEl = itemEl.querySelector('.time');
+
+  const originalDesc = item.description;
+  const originalMins = item.minutes;
+
+  // Create inline edit inputs
+  const descInput = document.createElement('input');
+  descInput.type = 'text';
+  descInput.value = originalDesc;
+  descInput.className = 'inline-edit-input';
+  descInput.style.flex = '1';
+  descInput.style.padding = '4px 8px';
+  descInput.style.border = '1px solid #1f73e8';
+  descInput.style.borderRadius = '3px';
+
+  const minsInput = document.createElement('input');
+  minsInput.type = 'number';
+  minsInput.value = originalMins;
+  minsInput.className = 'inline-edit-input';
+  minsInput.style.width = '50px';
+  minsInput.style.padding = '4px 8px';
+  minsInput.style.border = '1px solid #1f73e8';
+  minsInput.style.borderRadius = '3px';
+  minsInput.min = '1';
+
+  const saveEdit = () => {
+    const newDesc = descInput.value.trim();
+    const newMins = parseInt(minsInput.value) || 0;
+
+    if (newDesc && newMins > 0) {
+      item.description = newDesc;
+      item.minutes = newMins;
+      saveAgenda();
+    }
+
+    itemEl.classList.remove('editing');
+    renderAgenda();
+  };
+
+  descInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') saveEdit();
+  });
+
+  minsInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') saveEdit();
+  });
+
+  itemEl.classList.add('editing');
+  desc.replaceWith(descInput);
+  timeEl.replaceWith(minsInput);
+  descInput.focus();
+  descInput.select();
+
+  // Save on blur
+  const blurHandler = () => saveEdit();
+  descInput.addEventListener('blur', blurHandler);
+  minsInput.addEventListener('blur', blurHandler);
 }
 
 function saveAgenda() {
@@ -240,6 +317,15 @@ function importFromDescription() {
       if (added > 0) {
         saveAgenda();
         renderAgenda();
+
+        // Re-enable start button if timer isn't running
+        const startBtn = document.getElementById('startBtn');
+        if (startBtn && !startBtn.dataset.timerRunning) {
+          startBtn.disabled = false;
+          startBtn.textContent = 'Start Timer';
+          startBtn.style.opacity = '1';
+          startBtn.style.cursor = 'pointer';
+        }
       }
     });
   });
