@@ -788,14 +788,19 @@ function updateOverlayProgress(agenda, index, overallProgress, meetingEndTime) {
       scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     }
 
-    // Actual end time (if running over)
-    const actualEndMs = now;
-    const actualEndDate = new Date(actualEndMs);
-    const actualEndStr = actualEndDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    // Calculate remaining time until meeting end
+    const remainingMs = Math.max(0, scheduledEndMs - now);
+    const remainingMinutes = remainingMs / (1000 * 60);
+    const remainingHours = Math.floor(remainingMinutes / 60);
+    const remainingMins = Math.floor(remainingMinutes % 60);
+    const remainingSecs = Math.round((remainingMinutes % 1) * 60);
 
     let timesText = `Started: ${startTimeStr}<br>Ends: ${scheduledEndStr}`;
+    if (remainingHours > 0 || remainingMins > 0) {
+      timesText += `<br><span style="color: #1f73e8;">Remaining: ${remainingHours}h ${remainingMins}m</span>`;
+    }
     if (overtimeMinutes > 0.1) {
-      timesText += `<br><span style="color: #ea4335;">Actually: ${actualEndStr}</span>`;
+      timesText += `<br><span style="color: #ea4335;">Agenda +${Math.floor(overtimeMinutes)}m over</span>`;
     }
 
     const timesEl = overlay.querySelector('.mp-meeting-times');

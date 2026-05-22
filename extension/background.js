@@ -75,9 +75,25 @@ function updateOverlay() {
   // Calculate total time allocated
   const totalMinutes = currentAgenda.reduce((sum, item) => sum + item.minutes, 0);
 
-  // Calculate actual elapsed time since meeting started (only once, independent of currentIndex)
+  // Calculate actual elapsed time since meeting started
   const totalElapsedMs = now - currentAgenda[0].startTime;
   const totalElapsedMinutes = totalElapsedMs / (1000 * 60);
+
+  // Auto-calculate currentIndex based on elapsed time (account for all completed items)
+  let autoIndex = currentAgenda.length - 1; // Default to last item
+  let accumulatedTime = 0;
+
+  for (let i = 0; i < currentAgenda.length; i++) {
+    accumulatedTime += currentAgenda[i].minutes;
+    if (totalElapsedMinutes < accumulatedTime) {
+      autoIndex = i;
+      break;
+    }
+  }
+
+  // Use auto-calculated index (unless user manually navigated, in which case use currentIndex)
+  // If elapsed time exceeds all items, show last item as active; if less, use calculated index
+  const effectiveIndex = (totalElapsedMinutes >= totalMinutes) ? currentAgenda.length - 1 : autoIndex;
 
   // Overall progress is based on total elapsed time, not affected by navigation
   // Continue counting into overtime (don't cap at 1.0)
@@ -90,7 +106,7 @@ function updateOverlay() {
         {
           action: 'updateProgress',
           agenda: currentAgenda,
-          currentIndex,
+          currentIndex: effectiveIndex,
           overallProgress,
           meetingEndTime: currentAgenda.meetingEndTime
         },
