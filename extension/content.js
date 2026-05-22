@@ -234,6 +234,7 @@ function renderAgendaItems(overlay) {
       <div class="mp-overall-bar">
         <div class="mp-progress" style="width: 0%"></div>
       </div>
+      <div class="mp-overall-time" style="display: none;"></div>
     </div>
   `;
 }
@@ -385,6 +386,21 @@ function updateOverlayProgress(agenda, index, overallProgress) {
     progressBar.classList.remove('red');
   } else {
     progressBar.classList.remove('amber', 'red');
+  }
+
+  // Update time display
+  if (agenda && agenda.length > 0) {
+    const now = Date.now();
+    const totalElapsedMs = now - agenda[0].startTime;
+    const totalElapsedMinutes = totalElapsedMs / (1000 * 60);
+    const totalDurationMinutes = agenda.reduce((sum, item) => sum + item.minutes, 0);
+
+    const elapsedMins = Math.floor(totalElapsedMinutes);
+    const elapsedSecs = Math.round((totalElapsedMinutes - elapsedMins) * 60);
+
+    const timeEl = overlay.querySelector('.mp-overall-time');
+    timeEl.textContent = `${elapsedMins}m ${elapsedSecs}s / ${totalDurationMinutes}m`;
+    timeEl.style.display = 'block';
   }
 
   // Update button states
@@ -606,6 +622,15 @@ function injectStyles() {
       text-transform: uppercase;
       font-weight: 600;
       margin-bottom: 6px;
+    }
+
+    .mp-overall-time {
+      font-size: 11px;
+      color: #5f6368;
+      text-align: center;
+      margin-top: 6px;
+      font-family: monospace;
+      font-weight: 500;
     }
 
     .mp-overall-bar {
