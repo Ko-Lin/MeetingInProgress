@@ -57,30 +57,58 @@ function setupDrawerHandlers(overlay) {
   const drawer = overlay.querySelector('.mp-side-drawer');
   const drawerToggle = overlay.querySelector('.mp-drawer-toggle');
   const drawerClose = overlay.querySelector('.mp-drawer-close');
-  const addBtn = overlay.querySelector('.mp-overlay-add-btn');
   const parseBtn = overlay.querySelector('.mp-overlay-parse-btn');
   const startTimerBtn = overlay.querySelector('.mp-overlay-start-timer-btn');
   const clearBtn = overlay.querySelector('.mp-overlay-clear-btn');
-  const itemInput = overlay.querySelector('.mp-overlay-item-input');
-  const minutesInput = overlay.querySelector('.mp-overlay-minutes-input');
   const pasteInput = overlay.querySelector('.mp-overlay-paste-input');
   const startTimeInput = overlay.querySelector('.mp-overlay-start-time-input');
-  const nowBtn = overlay.querySelector('.mp-overlay-now-btn');
+  const templateSelect = overlay.querySelector('.mp-overlay-template-select');
+  const loadTemplateBtn = overlay.querySelector('.mp-overlay-load-template-btn');
 
-  // Function to set time to current time
-  const setCurrentTime = () => {
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    startTimeInput.value = `${hours}:${minutes}`;
-    console.log('[Meeting Progress] Start time set to current time');
-  };
+  // Load templates into dropdown
+  loadTemplatesIntoDropdown(templateSelect);
 
-  // Set current time as default in the time input
-  setCurrentTime();
+  // Handle load template button
+  loadTemplateBtn.addEventListener('click', () => {
+    const selectedValue = templateSelect.value;
+    if (!selectedValue) {
+      console.log('[Meeting Progress] No template selected');
+      return;
+    }
 
-  // Add event listener for "Now" button
-  nowBtn.addEventListener('click', setCurrentTime);
+    chrome.storage.sync.get(['templates'], (result) => {
+      const templates = result.templates || [];
+      const selectedIndex = parseInt(selectedValue);
+      const template = templates[selectedIndex];
+
+      if (template && template.items) {
+        // Build template text to populate into Quick Parse textarea
+        let templateText = '';
+
+        // Add start time if present
+        if (template.startTime) {
+          templateText += template.startTime + '\n';
+        }
+
+        // Add items
+        templateText += template.items
+          .map(item => `${item.description} ${item.minutes}m`)
+          .join('\n');
+
+        // Add end time if present
+        if (template.endTime) {
+          templateText += '\n' + template.endTime;
+        }
+
+        // Populate the Quick Parse textarea
+        pasteInput.value = templateText;
+        console.log(`[Meeting Progress] Loaded template into Quick Parse: ${template.name}`);
+
+        // Reset dropdown
+        templateSelect.value = '';
+      }
+    });
+  });
 
   // Toggle drawer visibility with animation
   drawerToggle.addEventListener('click', () => {
@@ -119,12 +147,6 @@ function setupDrawerHandlers(overlay) {
     }
   });
 
-  // Add item
-  addBtn.addEventListener('click', () => overlayAddItem(overlay));
-  itemInput.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') overlayAddItem(overlay);
-  });
-
   // Parse and add
   parseBtn.addEventListener('click', () => overlayParseAndAdd(overlay));
 
@@ -135,6 +157,36 @@ function setupDrawerHandlers(overlay) {
   clearBtn.addEventListener('click', () => {
     if (confirm('Clear all agenda items?')) {
       overlayAgendaClearAll(overlay);
+    }
+  });
+}
+
+function loadTemplatesIntoDropdown(selectElement) {
+  if (!selectElement) {
+    console.log('[Meeting Progress] Template select element not found');
+    return;
+  }
+
+  chrome.storage.sync.get(['templates'], (result) => {
+    const templates = result.templates || [];
+    console.log('[Meeting Progress] Loaded templates from storage:', templates);
+
+    // Clear existing options (except the first placeholder)
+    while (selectElement.options.length > 1) {
+      selectElement.removeChild(selectElement.lastChild);
+    }
+
+    // Add template options
+    templates.forEach((template, index) => {
+      const option = document.createElement('option');
+      option.value = index.toString();
+      option.textContent = template.name;
+      selectElement.appendChild(option);
+      console.log(`[Meeting Progress] Added template option: ${template.name}`);
+    });
+
+    if (templates.length === 0) {
+      console.log('[Meeting Progress] No templates found');
     }
   });
 }
@@ -166,6 +218,7 @@ function overlayAddItem(overlay) {
 
 function overlayParseAndAdd(overlay) {
   const pasteInput = overlay.querySelector('.mp-overlay-paste-input');
+  const startTimeInput = overlay.querySelector('.mp-overlay-start-time-input');
   const text = pasteInput.value.trim();
 
   if (!text) {
@@ -173,33 +226,57 @@ function overlayParseAndAdd(overlay) {
     return;
   }
 
-  const lines = text.split('\n');
-  const pattern = /(\d+)\s*min(?:ute)?s?/i;
+  let lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  const timePattern = /^(\d{1,2}):(\d{2})$/;
   let parsed = 0;
+  let endTime = null;
+
+  // Check if first line is a time (HH:MM format) - start time
+  if (lines.length > 0 && timePattern.test(lines[0])) {
+    const timeMatch = lines[0].match(timePattern);
+    const hours = timeMatch[1].padStart(2, '0');
+    const minutes = timeMatch[2];
+    startTimeInput.value = `${hours}:${minutes}`;
+    console.log('[Meeting Progress] Start time set to ' + startTimeInput.value);
+    lines = lines.slice(1);
+  }
+
+  // Check if last line is a time (HH:MM format) - end time (store it)
+  if (lines.length > 0 && timePattern.test(lines[lines.length - 1])) {
+    const endTimeMatch = lines[lines.length - 1].match(timePattern);
+    const hours = endTimeMatch[1].padStart(2, '0');
+    const minutes = endTimeMatch[2];
+    endTime = `${hours}:${minutes}`;
+    console.log('[Meeting Progress] Meeting end time: ' + endTime);
+    lines = lines.slice(0, -1);
+  }
+
+  const durationOnlyPattern = /^(.+?)\s+(\d+)\s*(?:min(?:ute)?s?|m)$/i;
 
   lines.forEach((line) => {
-    const match = line.match(pattern);
+    const match = line.match(durationOnlyPattern);
     if (match) {
-      const minutes = parseInt(match[1]);
-      const description = line.replace(pattern, '').trim();
-
-      if (description && minutes > 0) {
-        currentAgenda.push({
-          id: Date.now() + Math.random(),
-          description,
-          minutes,
-          startTime: null
-        });
-        parsed++;
-      }
+      currentAgenda.push({
+        id: Date.now() + Math.random(),
+        description: match[1].trim(),
+        minutes: parseInt(match[2], 10),
+        startTime: null
+      });
+      parsed++;
     }
   });
 
   if (parsed > 0) {
+    // Store end time if it was parsed
+    if (endTime) {
+      currentAgenda.meetingEndTime = endTime;
+    }
     chrome.storage.sync.set({ agenda: currentAgenda });
-    pasteInput.value = '';
+    // Don't clear pasteInput - keep it so user can quickly modify and re-parse
     renderAgendaItems(overlay);
     console.log(`[Meeting Progress] Parsed and added ${parsed} items`);
+  } else if (lines.length > 0) {
+    console.log('[Meeting Progress] No valid items found in parse');
   }
 }
 
@@ -210,9 +287,29 @@ function overlayDeleteItem(overlay, itemId) {
 }
 
 function overlayAgendaClearAll(overlay) {
+  console.log('[Meeting Progress] Clear All clicked - currentAgenda before:', currentAgenda);
+
+  // Stop the timer if it's running
+  chrome.runtime.sendMessage({ action: 'stopTimer' }, (response) => {
+    console.log('[Meeting Progress] Timer stopped');
+  });
+
   currentAgenda = [];
-  chrome.storage.sync.set({ agenda: currentAgenda });
+  console.log('[Meeting Progress] Clear All - currentAgenda after:', currentAgenda);
+
+  // Save to storage
+  chrome.storage.sync.set({ agenda: [] }, () => {
+    console.log('[Meeting Progress] Agenda cleared from storage');
+  });
+
+  // Clear all input fields in the drawer
+  const pasteInput = overlay.querySelector('.mp-overlay-paste-input');
+
+  if (pasteInput) pasteInput.value = '';
+
+  // Re-render the agenda display
   renderAgendaItems(overlay);
+  console.log('[Meeting Progress] Cleared all agenda items and inputs');
 }
 
 function overlayStartTimer(overlay) {
@@ -228,11 +325,7 @@ function overlayStartTimer(overlay) {
     today.setHours(parseInt(hours), parseInt(minutes), 0, 0);
     startTime = today.getTime();
 
-    // If the time is in the future (e.g., typed tomorrow's time by mistake), use current time
-    if (startTime > Date.now()) {
-      console.log('[Meeting Progress] Start time is in the future, using current time');
-      startTime = Date.now();
-    }
+    console.log('[Meeting Progress] Start time set to ' + startTimeInput.value);
   }
 
   currentAgenda.forEach((item) => {
@@ -354,31 +447,25 @@ function injectOverlay() {
         </div>
 
         <div class="mp-drawer-content">
-          <!-- Add Item Section -->
+          <!-- Hidden start time input for timer -->
+          <input type="time" class="mp-overlay-start-time-input" style="display: none;">
+
+          <!-- Load Template Section -->
           <div class="mp-drawer-section">
-            <label class="mp-drawer-label">Add Item</label>
-            <div class="mp-drawer-input-group">
-              <input type="text" class="mp-overlay-item-input" placeholder="Description" style="flex: 1; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px;">
-              <input type="number" class="mp-overlay-minutes-input" placeholder="Min" min="1" max="120" style="width: 60px; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px; margin-left: 4px;">
-            </div>
-            <button class="mp-overlay-add-btn" style="width: 100%; margin-top: 6px; padding: 8px 12px; background: #1f73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Add</button>
+            <label class="mp-drawer-label">Load Template</label>
+            <select class="mp-overlay-template-select" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px; margin-bottom: 6px;">
+              <option value="">Select a template...</option>
+            </select>
+            <button class="mp-overlay-load-template-btn" style="width: 100%; padding: 8px 12px; background: #34a853; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Load Template</button>
+            <div style="font-size: 11px; color: #5f6368; margin-top: 6px;">Quickly load preset agenda items from your templates</div>
           </div>
 
           <!-- Quick Parse Section -->
           <div class="mp-drawer-section">
             <label class="mp-drawer-label">Quick Parse</label>
-            <textarea class="mp-overlay-paste-input" placeholder="Paste lines like:&#10;Welcome 5 min&#10;Demo 15 min" style="width: 100%; height: 80px; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>
+            <textarea class="mp-overlay-paste-input" placeholder="11:00&#10;Warm up 5m&#10;Stand up 20m&#10;Tech dive 20m&#10;11:55" style="width: 100%; height: 100px; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>
+            <div style="font-size: 11px; color: #5f6368; margin-top: 4px;">Start time (opt), items, end time (opt). Times as HH:MM. Items as "Name Xm"</div>
             <button class="mp-overlay-parse-btn" style="width: 100%; margin-top: 6px; padding: 8px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Parse and Add</button>
-          </div>
-
-          <!-- Start Time Section -->
-          <div class="mp-drawer-section">
-            <label class="mp-drawer-label">Meeting Start Time (Optional)</label>
-            <div style="display: flex; gap: 6px; align-items: center;">
-              <input type="time" class="mp-overlay-start-time-input" style="flex: 1; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px;">
-              <button class="mp-overlay-now-btn" style="padding: 8px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; white-space: nowrap;">Now</button>
-            </div>
-            <div style="font-size: 11px; color: #5f6368; margin-top: 4px;">Click "Now" to set current time</div>
           </div>
 
           <!-- Start Timer Section -->
@@ -742,9 +829,21 @@ function updateOverlayProgress(agenda, index, overallProgress) {
     const startTimeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
     // Scheduled end time
-    const scheduledEndMs = startTimeMs + (totalDurationMinutes * 60 * 1000);
-    const scheduledEndDate = new Date(scheduledEndMs);
-    const scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    let scheduledEndMs, scheduledEndDate, scheduledEndStr;
+
+    if (agenda.meetingEndTime) {
+      // Use the specified end time from template
+      const [endHours, endMinutes] = agenda.meetingEndTime.split(':').map(Number);
+      scheduledEndDate = new Date(startTimeMs);
+      scheduledEndDate.setHours(endHours, endMinutes, 0, 0);
+      scheduledEndMs = scheduledEndDate.getTime();
+      scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    } else {
+      // Calculate from start time + duration
+      scheduledEndMs = startTimeMs + (totalDurationMinutes * 60 * 1000);
+      scheduledEndDate = new Date(scheduledEndMs);
+      scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    }
 
     // Actual end time (if running over)
     const actualEndMs = now;

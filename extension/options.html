@@ -112,6 +112,27 @@
       background: #1765cc;
     }
 
+    button.secondary {
+      background: white;
+      color: #1f73e8;
+      border: 1px solid #dadce0;
+    }
+
+    button.secondary:hover {
+      background: #f8f9fa;
+      border-color: #1f73e8;
+    }
+
+    button.danger {
+      background: #d33b27;
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+
+    button.danger:hover {
+      background: #b71c1c;
+    }
+
     .status {
       margin-top: 16px;
       padding: 12px;
@@ -133,6 +154,104 @@
       background: #fce8e6;
       color: #d33b27;
       border: 1px solid #f28482;
+    }
+
+    .status.warning {
+      background: #fef7e0;
+      color: #9d7a00;
+      border: 1px solid #f9d5b8;
+    }
+
+    textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: monospace;
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #1f73e8;
+      box-shadow: 0 0 0 3px rgba(31, 115, 232, 0.1);
+    }
+
+    .template-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .template-item {
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #fafbfc;
+    }
+
+    .template-info {
+      flex: 1;
+    }
+
+    .template-name {
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .template-items-count {
+      font-size: 12px;
+      color: #5f6368;
+    }
+
+    .template-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .edit-form {
+      background: #fafbfc;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      padding: 16px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .edit-form.show {
+      display: block;
+    }
+
+    .form-row {
+      margin-bottom: 12px;
+      display: flex;
+      gap: 8px;
+    }
+
+    .form-row input {
+      flex: 1;
+    }
+
+    .form-row button {
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+
+    .close-btn {
+      background: white;
+      color: #202124;
+      border: 1px solid #dadce0;
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    .close-btn:hover {
+      background: #f8f9fa;
     }
   </style>
 </head>
@@ -173,6 +292,34 @@
         </select>
         <p class="help-text">Overlay will appear in this corner (can be dragged)</p>
       </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Agenda Templates</div>
+      <p class="help-text" style="margin-bottom: 16px;">Create reusable templates for quick meeting setup (e.g., "Standup" with recurring items)</p>
+
+      <!-- Create/Edit Template Form -->
+      <div class="edit-form" id="templateEditForm">
+        <div class="form-row">
+          <input type="text" id="templateName" placeholder="Template name (e.g., Standup, Planning Session)" />
+          <button class="secondary close-btn" id="cancelEditBtn">Cancel</button>
+        </div>
+        <div class="setting">
+          <label for="templateItems">Agenda Items</label>
+          <textarea id="templateItems" placeholder="Optional: start time (first line)&#10;11:00&#10;Warm up 5m&#10;Stand up 20m&#10;Tech dive 20m&#10;Optional: end time (last line)&#10;11:55"></textarea>
+          <p class="help-text">Format: (optional) StartTime, items, (optional) EndTime. Example: 11:00, Updates 5m, Blockers 10m, 11:55</p>
+        </div>
+        <button id="saveTemplateBtn">Save Template</button>
+      </div>
+
+      <!-- Create Template Button -->
+      <div style="margin-bottom: 16px;">
+        <button id="createTemplateBtn">+ New Template</button>
+      </div>
+
+      <!-- Templates List -->
+      <div id="templatesList" class="template-list"></div>
+      <p class="help-text" id="noTemplatesMsg" style="margin-top: 16px;">No templates yet. Create one to get started.</p>
     </div>
 
     <button id="saveBtn">Save Settings</button>
