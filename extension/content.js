@@ -423,8 +423,21 @@ function updateOverlayProgress(agenda, index, overallProgress) {
     const elapsedMins = Math.floor(totalElapsedMinutes);
     const elapsedSecs = Math.round((totalElapsedMinutes - elapsedMins) * 60);
 
+    // Calculate overtime
+    const overtimeMinutes = totalElapsedMinutes - totalDurationMinutes;
+    let timeText = `${elapsedMins}m ${elapsedSecs}s / ${totalDurationMinutes}m`;
+
     const timeEl = overlay.querySelector('.mp-overall-time');
-    timeEl.textContent = `${elapsedMins}m ${elapsedSecs}s / ${totalDurationMinutes}m`;
+    if (overtimeMinutes > 0.1) { // Show overtime if more than 6 seconds
+      const overtimeMins = Math.floor(overtimeMinutes);
+      const overtimeSecs = Math.round((overtimeMinutes - overtimeMins) * 60);
+      timeText += ` (+${overtimeMins}m ${overtimeSecs}s over)`;
+      timeEl.classList.add('overtime');
+    } else {
+      timeEl.classList.remove('overtime');
+    }
+
+    timeEl.textContent = timeText;
     timeEl.style.display = 'block';
   }
 
@@ -657,6 +670,12 @@ function injectStyles() {
       margin-top: 6px;
       font-family: monospace;
       font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .mp-overall-time.overtime {
+      color: #ea4335;
+      font-weight: 600;
     }
 
     .mp-overall-bar {
