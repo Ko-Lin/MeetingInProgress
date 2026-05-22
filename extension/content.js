@@ -228,6 +228,9 @@ function overlayParseAndAdd(overlay) {
   let parsed = 0;
   let endTime = null;
 
+  // Clear the agenda to replace it
+  currentAgenda = [];
+
   // Check if first line is a time (HH:MM format) - start time
   if (lines.length > 0 && timePattern.test(lines[0])) {
     const timeMatch = lines[0].match(timePattern);
@@ -271,7 +274,7 @@ function overlayParseAndAdd(overlay) {
     chrome.storage.sync.set({ agenda: currentAgenda });
     // Don't clear pasteInput - keep it so user can quickly modify and re-parse
     renderAgendaItems(overlay);
-    console.log(`[Meeting Progress] Parsed and added ${parsed} items`);
+    console.log(`[Meeting Progress] Parsed and updated agenda with ${parsed} items`);
   } else if (lines.length > 0) {
     console.log('[Meeting Progress] No valid items found in parse');
   }
@@ -436,7 +439,7 @@ function injectOverlay() {
             <label class="mp-drawer-label">Quick Parse</label>
             <textarea class="mp-overlay-paste-input" placeholder="11:00&#10;Warm up 5m&#10;Stand up 20m&#10;Tech dive 20m&#10;11:55" style="width: 100%; height: 100px; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>
             <div style="font-size: 11px; color: #5f6368; margin-top: 4px;">Start time (opt), items, end time (opt). Times as HH:MM. Items as "Name Xm"</div>
-            <button class="mp-overlay-parse-btn" style="width: 100%; margin-top: 6px; padding: 8px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Parse and Add</button>
+            <button class="mp-overlay-parse-btn" style="width: 100%; margin-top: 6px; padding: 8px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Parse and Update</button>
           </div>
 
           <!-- Add Item Section -->
