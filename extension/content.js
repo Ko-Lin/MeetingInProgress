@@ -63,7 +63,6 @@ function setupDrawerHandlers(overlay) {
   const startTimeInput = overlay.querySelector('.mp-overlay-start-time-input');
   const templateSelect = overlay.querySelector('.mp-overlay-template-select');
   const loadTemplateBtn = overlay.querySelector('.mp-overlay-load-template-btn');
-  const addItemBtn = overlay.querySelector('.mp-overlay-add-item-btn');
 
   // Load templates into dropdown
   loadTemplatesIntoDropdown(templateSelect);
@@ -147,11 +146,8 @@ function setupDrawerHandlers(overlay) {
     }
   });
 
-  // Parse and add
+  // Parse and update
   parseBtn.addEventListener('click', () => overlayParseAndAdd(overlay));
-
-  // Add individual item
-  addItemBtn.addEventListener('click', () => overlayAddItem(overlay));
 
   // Start timer
   startTimerBtn.addEventListener('click', () => overlayStartTimer(overlay));
@@ -185,32 +181,6 @@ function loadTemplatesIntoDropdown(selectElement) {
       console.log('[Meeting Progress] No templates found');
     }
   });
-}
-
-function overlayAddItem(overlay) {
-  const itemInput = overlay.querySelector('.mp-overlay-item-input');
-  const minutesInput = overlay.querySelector('.mp-overlay-minutes-input');
-
-  const description = itemInput.value.trim();
-  const minutes = parseInt(minutesInput.value) || 0;
-
-  if (!description || minutes <= 0) {
-    console.log('[Meeting Progress] Invalid item');
-    return;
-  }
-
-  currentAgenda.push({
-    id: Date.now() + Math.random(),
-    description,
-    minutes,
-    startTime: null
-  });
-
-  chrome.storage.sync.set({ agenda: currentAgenda });
-  itemInput.value = '';
-  minutesInput.value = '5';
-  renderAgendaItems(overlay);
-  console.log('[Meeting Progress] Item added');
 }
 
 function overlayParseAndAdd(overlay) {
@@ -440,16 +410,6 @@ function injectOverlay() {
             <textarea class="mp-overlay-paste-input" placeholder="11:00&#10;Warm up 5m&#10;Stand up 20m&#10;Tech dive 20m&#10;11:55" style="width: 100%; height: 100px; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>
             <div style="font-size: 11px; color: #5f6368; margin-top: 4px;">Start time (opt), items, end time (opt). Times as HH:MM. Items as "Name Xm"</div>
             <button class="mp-overlay-parse-btn" style="width: 100%; margin-top: 6px; padding: 8px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Parse and Update</button>
-          </div>
-
-          <!-- Add Item Section -->
-          <div class="mp-drawer-section">
-            <label class="mp-drawer-label">Add Item</label>
-            <div style="display: flex; gap: 6px; margin-bottom: 6px;">
-              <input type="text" class="mp-overlay-item-input" placeholder="Item name" style="flex: 1; padding: 6px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px;">
-              <input type="number" class="mp-overlay-minutes-input" placeholder="min" min="1" value="5" style="width: 50px; padding: 6px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px;">
-            </div>
-            <button class="mp-overlay-add-item-btn" style="width: 100%; padding: 6px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">+ Add</button>
           </div>
 
           <!-- Start Timer Section -->
