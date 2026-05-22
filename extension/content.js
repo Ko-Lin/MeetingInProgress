@@ -237,11 +237,13 @@ function overlayParseAndAdd(overlay) {
   });
 
   if (parsed > 0) {
-    // Store end time if it was parsed
+    // Store end time separately (array properties don't persist in chrome.storage)
+    const storageData = { agenda: currentAgenda };
     if (endTime) {
       currentAgenda.meetingEndTime = endTime;
+      storageData.meetingEndTime = endTime;
     }
-    chrome.storage.sync.set({ agenda: currentAgenda });
+    chrome.storage.sync.set(storageData);
     // Don't clear pasteInput - keep it so user can quickly modify and re-parse
     renderAgendaItems(overlay);
     console.log(`[Meeting Progress] Parsed and updated agenda with ${parsed} items`);
@@ -252,7 +254,11 @@ function overlayParseAndAdd(overlay) {
 
 function overlayDeleteItem(overlay, itemId) {
   currentAgenda = currentAgenda.filter((item) => item.id !== itemId);
-  chrome.storage.sync.set({ agenda: currentAgenda });
+  const storageData = { agenda: currentAgenda };
+  if (currentAgenda.meetingEndTime) {
+    storageData.meetingEndTime = currentAgenda.meetingEndTime;
+  }
+  chrome.storage.sync.set(storageData);
   renderAgendaItems(overlay);
 }
 
@@ -278,9 +284,14 @@ function overlayStartTimer(overlay) {
     }
   });
 
-  chrome.storage.sync.set({ agenda: currentAgenda });
+  const storageData = { agenda: currentAgenda };
+  if (currentAgenda.meetingEndTime) {
+    storageData.meetingEndTime = currentAgenda.meetingEndTime;
+  }
+  chrome.storage.sync.set(storageData);
 
-  chrome.runtime.sendMessage({ action: 'startTimer', agenda: currentAgenda }, (response) => {
+  // Pass the meeting end time explicitly to background service worker
+  chrome.runtime.sendMessage({ action: 'startTimer', agenda: currentAgenda, meetingEndTime: currentAgenda.meetingEndTime }, (response) => {
     if (response?.success) {
       const startTimeFormatted = new Date(startTime).toLocaleTimeString('en-US', {
         hour: 'numeric',
@@ -498,10 +509,13 @@ function injectOverlay() {
     }
   });
 
-  // Load current agenda and render in drawer
-  chrome.storage.sync.get(['agenda'], (result) => {
+  // Load current agenda and meeting end time from storage
+  chrome.storage.sync.get(['agenda', 'meetingEndTime'], (result) => {
     if (result.agenda && result.agenda.length > 0) {
       currentAgenda = result.agenda;
+      if (result.meetingEndTime) {
+        currentAgenda.meetingEndTime = result.meetingEndTime;
+      }
       renderAgendaItems(overlay);
     }
   });

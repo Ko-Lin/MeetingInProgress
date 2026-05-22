@@ -7,7 +7,7 @@ let updateIntervalId = null;
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startTimer') {
-    const success = startTimer(request.agenda);
+    const success = startTimer(request.agenda, request.meetingEndTime);
     sendResponse({ success });
   } else if (request.action === 'advanceItem') {
     advanceItem();
@@ -23,10 +23,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-function startTimer(agenda) {
+function startTimer(agenda, meetingEndTime) {
   if (!agenda || agenda.length === 0) return false;
 
   currentAgenda = agenda;
+  if (meetingEndTime) {
+    currentAgenda.meetingEndTime = meetingEndTime;
+  }
   currentIndex = 0;
   timerRunning = true;
 
