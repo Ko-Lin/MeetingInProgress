@@ -783,7 +783,7 @@ function updateOverlayProgress(agenda, index, overallProgress, meetingEndTime) {
     // Calculate and display meeting times
     const startTimeMs = agenda[0].startTime;
     const startDate = new Date(startTimeMs);
-    const startTimeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    const startTimeStr = startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 
     // Scheduled end time
     let scheduledEndMs, scheduledEndDate, scheduledEndStr;
@@ -794,12 +794,12 @@ function updateOverlayProgress(agenda, index, overallProgress, meetingEndTime) {
       scheduledEndDate = new Date(startTimeMs);
       scheduledEndDate.setHours(endHours, endMinutes, 0, 0);
       scheduledEndMs = scheduledEndDate.getTime();
-      scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     } else {
       // Calculate from start time + duration
       scheduledEndMs = startTimeMs + (totalDurationMinutes * 60 * 1000);
       scheduledEndDate = new Date(scheduledEndMs);
-      scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     }
 
     // Calculate remaining time until meeting end
