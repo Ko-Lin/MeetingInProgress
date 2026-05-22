@@ -54,28 +54,52 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Drawer management functions
 function setupDrawerHandlers(overlay) {
-  const drawer = overlay.querySelector('.mp-drawer');
+  const drawer = overlay.querySelector('.mp-side-drawer');
   const drawerToggle = overlay.querySelector('.mp-drawer-toggle');
   const drawerClose = overlay.querySelector('.mp-drawer-close');
   const addBtn = overlay.querySelector('.mp-overlay-add-btn');
   const parseBtn = overlay.querySelector('.mp-overlay-parse-btn');
-  const importBtn = overlay.querySelector('.mp-overlay-import-btn');
   const startTimerBtn = overlay.querySelector('.mp-overlay-start-timer-btn');
   const clearBtn = overlay.querySelector('.mp-overlay-clear-btn');
   const itemInput = overlay.querySelector('.mp-overlay-item-input');
   const minutesInput = overlay.querySelector('.mp-overlay-minutes-input');
   const pasteInput = overlay.querySelector('.mp-overlay-paste-input');
 
-  // Toggle drawer visibility
+  // Toggle drawer visibility with animation
   drawerToggle.addEventListener('click', () => {
     const isOpen = drawer.style.display !== 'none';
-    drawer.style.display = isOpen ? 'none' : 'block';
-    chrome.storage.session?.setItem('mp-drawer-open', !isOpen);
+    if (isOpen) {
+      drawer.classList.add('closing');
+      setTimeout(() => {
+        drawer.style.display = 'none';
+        drawer.classList.remove('closing');
+      }, 300);
+    } else {
+      drawer.style.display = 'block';
+    }
   });
 
+  // Close drawer with animation
   drawerClose.addEventListener('click', () => {
-    drawer.style.display = 'none';
-    chrome.storage.session?.setItem('mp-drawer-open', false);
+    drawer.classList.add('closing');
+    setTimeout(() => {
+      drawer.style.display = 'none';
+      drawer.classList.remove('closing');
+    }, 300);
+  });
+
+  // Close drawer when clicking overlay outside drawer
+  document.addEventListener('click', (e) => {
+    if (drawer.style.display !== 'none' &&
+        !drawer.contains(e.target) &&
+        !drawerToggle.contains(e.target) &&
+        !overlay.querySelector('.mp-container').contains(e.target)) {
+      drawer.classList.add('closing');
+      setTimeout(() => {
+        drawer.style.display = 'none';
+        drawer.classList.remove('closing');
+      }, 300);
+    }
   });
 
   // Add item
@@ -87,9 +111,6 @@ function setupDrawerHandlers(overlay) {
   // Parse and add
   parseBtn.addEventListener('click', () => overlayParseAndAdd(overlay));
 
-  // Import from description
-  importBtn.addEventListener('click', () => overlayImportFromDescription(overlay));
-
   // Start timer
   startTimerBtn.addEventListener('click', () => overlayStartTimer(overlay));
 
@@ -98,43 +119,6 @@ function setupDrawerHandlers(overlay) {
     if (confirm('Clear all agenda items?')) {
       overlayAgendaClearAll(overlay);
     }
-  });
-
-  // Load drawer state
-  chrome.storage.session?.getItem('mp-drawer-open', (result) => {
-    if (result?.['mp-drawer-open']) {
-      drawer.style.display = 'block';
-    }
-  });
-}
-
-function renderDrawerAgendaList(overlay) {
-  const listContainer = overlay.querySelector('.mp-overlay-agenda-list');
-
-  if (currentAgenda.length === 0) {
-    listContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #80868b; font-size: 12px;">No items yet</div>';
-    return;
-  }
-
-  listContainer.innerHTML = currentAgenda
-    .map((item, index) => `
-      <div style="padding: 8px 12px; border-bottom: 1px solid #e8eaed; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer;" class="mp-drawer-item" data-item-id="${item.id}">
-        <div style="flex: 1; min-width: 0;">
-          <div style="font-size: 12px; color: #202124; word-break: break-word;">${item.description}</div>
-          <div style="font-size: 11px; color: #5f6368;">${item.minutes}m</div>
-        </div>
-        <button class="mp-drawer-item-delete" data-item-id="${item.id}" style="background: none; border: none; color: #d33b27; cursor: pointer; font-size: 14px; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">✕</button>
-      </div>
-    `)
-    .join('');
-
-  // Add delete handlers
-  listContainer.querySelectorAll('.mp-drawer-item-delete').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const itemId = parseInt(btn.dataset.itemId);
-      overlayDeleteItem(overlay, itemId);
-    });
   });
 }
 
@@ -159,8 +143,8 @@ function overlayAddItem(overlay) {
 
   chrome.storage.sync.set({ agenda: currentAgenda });
   itemInput.value = '';
-  renderDrawerAgendaList(overlay);
   renderAgendaItems(overlay);
+  console.log('[Meeting Progress] Item added');
 }
 
 function overlayParseAndAdd(overlay) {
@@ -197,93 +181,21 @@ function overlayParseAndAdd(overlay) {
   if (parsed > 0) {
     chrome.storage.sync.set({ agenda: currentAgenda });
     pasteInput.value = '';
-    renderDrawerAgendaList(overlay);
     renderAgendaItems(overlay);
+    console.log(`[Meeting Progress] Parsed and added ${parsed} items`);
   }
 }
 
 function overlayDeleteItem(overlay, itemId) {
   currentAgenda = currentAgenda.filter((item) => item.id !== itemId);
   chrome.storage.sync.set({ agenda: currentAgenda });
-  renderDrawerAgendaList(overlay);
   renderAgendaItems(overlay);
 }
 
 function overlayAgendaClearAll(overlay) {
   currentAgenda = [];
   chrome.storage.sync.set({ agenda: currentAgenda });
-  renderDrawerAgendaList(overlay);
   renderAgendaItems(overlay);
-}
-
-function overlayImportFromDescription(overlay) {
-  const importBtn = overlay.querySelector('.mp-overlay-import-btn');
-  importBtn.disabled = true;
-  importBtn.textContent = 'Importing...';
-
-  // Timeout to prevent button from being stuck
-  const timeout = setTimeout(() => {
-    importBtn.disabled = false;
-    importBtn.textContent = '📋 Import from Description';
-    console.log('[Meeting Progress] Import timeout - no response from content script');
-  }, 5000);
-
-  try {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (!tabs || !tabs[0]) {
-        clearTimeout(timeout);
-        importBtn.disabled = false;
-        importBtn.textContent = '📋 Import from Description';
-        console.log('[Meeting Progress] No active tab found');
-        return;
-      }
-
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'extractMeetingDescription' }, (response) => {
-        clearTimeout(timeout);
-        importBtn.disabled = false;
-        importBtn.textContent = '📋 Import from Description';
-
-        if (chrome.runtime.lastError) {
-          console.log('[Meeting Progress] Message error:', chrome.runtime.lastError);
-          return;
-        }
-
-        if (!response?.success) {
-          console.log('[Meeting Progress] Failed to extract description:', response?.error);
-          return;
-        }
-
-        const items = response.items || [];
-        let added = 0;
-
-        items.forEach((item) => {
-          if (item.description && item.minutes > 0) {
-            currentAgenda.push({
-              id: Date.now() + Math.random(),
-              description: item.description,
-              minutes: item.minutes,
-              startTime: null
-            });
-            added++;
-          }
-        });
-
-        if (added > 0) {
-          console.log(`[Meeting Progress] Imported ${added} items from description`);
-          chrome.storage.sync.set({ agenda: currentAgenda });
-          renderDrawerAgendaList(overlay);
-          renderAgendaItems(overlay);
-        } else {
-          console.log('[Meeting Progress] No items found in description');
-        }
-      });
-    });
-  } catch (error) {
-    clearTimeout(timeout);
-    importBtn.disabled = false;
-    importBtn.textContent = '📋 Import from Description';
-    console.error('[Meeting Progress] Error during import:', error);
-  }
 }
 
 function overlayStartTimer(overlay) {
@@ -392,10 +304,10 @@ function injectOverlay() {
       </div>
       <div class="mp-suggestion-area" style="display: none; padding: 12px 16px; border-top: 1px solid #e8eaed; background: #f8f9fa; font-size: 12px; color: #202124; line-height: 1.4;"></div>
 
-      <!-- Drawer for agenda management -->
-      <div class="mp-drawer" style="display: none;">
+      <!-- Side drawer for agenda management -->
+      <div class="mp-side-drawer" style="display: none;">
         <div class="mp-drawer-header">
-          <span>Edit Agenda</span>
+          <span>Agenda</span>
           <button class="mp-drawer-close" aria-label="Close drawer">×</button>
         </div>
 
@@ -404,36 +316,23 @@ function injectOverlay() {
           <div class="mp-drawer-section">
             <label class="mp-drawer-label">Add Item</label>
             <div class="mp-drawer-input-group">
-              <input type="text" class="mp-overlay-item-input" placeholder="Item description" style="flex: 1; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 3px; font-size: 12px;">
-              <input type="number" class="mp-overlay-minutes-input" placeholder="Min" min="1" max="120" style="width: 50px; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 3px; font-size: 12px; margin: 0 4px;">
-              <button class="mp-overlay-add-btn" style="padding: 6px 12px; background: #1f73e8; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: 500;">Add</button>
+              <input type="text" class="mp-overlay-item-input" placeholder="Description" style="flex: 1; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px;">
+              <input type="number" class="mp-overlay-minutes-input" placeholder="Min" min="1" max="120" style="width: 60px; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px; margin-left: 4px;">
             </div>
+            <button class="mp-overlay-add-btn" style="width: 100%; margin-top: 6px; padding: 8px 12px; background: #1f73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Add</button>
           </div>
 
           <!-- Quick Parse Section -->
           <div class="mp-drawer-section">
             <label class="mp-drawer-label">Quick Parse</label>
-            <textarea class="mp-overlay-paste-input" placeholder="Paste lines like:&#10;Welcome 5 min&#10;Demo 15 min&#10;Q&A 10 min" style="width: 100%; min-height: 60px; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 3px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>
-            <button class="mp-overlay-parse-btn" style="width: 100%; margin-top: 4px; padding: 6px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: 500;">Parse and Add</button>
-          </div>
-
-          <!-- Import Section -->
-          <div class="mp-drawer-section">
-            <button class="mp-overlay-import-btn" style="width: 100%; padding: 6px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: 500;">📋 Import from Description</button>
-          </div>
-
-          <!-- Agenda List Section -->
-          <div class="mp-drawer-section">
-            <label class="mp-drawer-label">Agenda Items</label>
-            <div class="mp-overlay-agenda-list" style="background: #f8f9fa; border: 1px solid #dadce0; border-radius: 3px; max-height: 200px; overflow-y: auto;">
-              <div style="padding: 12px; text-align: center; color: #80868b; font-size: 12px;">No items yet</div>
-            </div>
+            <textarea class="mp-overlay-paste-input" placeholder="Paste lines like:&#10;Welcome 5 min&#10;Demo 15 min" style="width: 100%; height: 80px; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>
+            <button class="mp-overlay-parse-btn" style="width: 100%; margin-top: 6px; padding: 8px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Parse and Add</button>
           </div>
 
           <!-- Start Timer Section -->
           <div class="mp-drawer-section">
-            <button class="mp-overlay-start-timer-btn" style="width: 100%; padding: 8px 12px; background: #1f73e8; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 13px; font-weight: 500; margin-top: 8px;">Start Timer</button>
-            <button class="mp-overlay-clear-btn" style="width: 100%; padding: 6px 12px; background: white; color: #d33b27; border: 1px solid #d33b27; border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: 500; margin-top: 4px;">Clear All</button>
+            <button class="mp-overlay-start-timer-btn" style="width: 100%; padding: 8px 12px; background: #1f73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">Start Timer</button>
+            <button class="mp-overlay-clear-btn" style="width: 100%; padding: 8px 12px; background: white; color: #d33b27; border: 1px solid #d33b27; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; margin-top: 6px;">Clear All</button>
           </div>
         </div>
       </div>
@@ -522,7 +421,6 @@ function injectOverlay() {
     if (result.agenda && result.agenda.length > 0) {
       currentAgenda = result.agenda;
       renderAgendaItems(overlay);
-      renderDrawerAgendaList(overlay); // Render in drawer too
     }
   });
 
@@ -1205,52 +1103,92 @@ function injectStyles() {
       animation: pulseOutline 0.6s ease-in-out infinite !important;
     }
 
-    /* Drawer styles */
-    .mp-drawer {
-      border-top: 1px solid #e8eaed;
-      padding: 0;
-      max-height: 300px;
-      overflow-y: auto;
+    /* Side drawer styles */
+    .mp-side-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 300px;
+      height: 100vh;
       background: white;
-      flex-shrink: 0;
+      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.15);
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      animation: slideInRight 0.3s ease-out;
+      overflow: hidden;
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideOutRight {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+    }
+
+    .mp-side-drawer.closing {
+      animation: slideOutRight 0.3s ease-in forwards;
     }
 
     .mp-drawer-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 12px 16px;
+      padding: 16px;
       background: #f8f9fa;
       border-bottom: 1px solid #e8eaed;
       font-weight: 600;
-      font-size: 12px;
+      font-size: 14px;
       color: #202124;
+      flex-shrink: 0;
     }
 
     .mp-drawer-close {
       background: none;
       border: none;
-      font-size: 16px;
+      font-size: 18px;
       color: #5f6368;
       cursor: pointer;
-      padding: 0;
-      width: 24px;
-      height: 24px;
+      padding: 4px;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .mp-drawer-close:hover {
       color: #202124;
+      background: #e8eaed;
+      border-radius: 4px;
     }
 
     .mp-drawer-content {
-      padding: 12px;
+      padding: 16px;
+      overflow-y: auto;
+      flex: 1;
     }
 
     .mp-drawer-section {
-      margin-bottom: 12px;
+      margin-bottom: 16px;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 8px;
     }
 
     .mp-drawer-section:last-child {
@@ -1262,30 +1200,19 @@ function injectStyles() {
       font-weight: 600;
       color: #5f6368;
       text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
 
     .mp-drawer-input-group {
       display: flex;
-      gap: 4px;
-      align-items: stretch;
-    }
-
-    .mp-drawer-item {
-      transition: background 0.2s;
-    }
-
-    .mp-drawer-item:hover {
-      background: #f8f9fa;
-    }
-
-    .mp-drawer-item:last-child {
-      border-bottom: none;
+      gap: 8px;
+      align-items: center;
     }
 
     .mp-drawer-toggle {
       background: none;
       border: none;
-      font-size: 16px;
+      font-size: 18px;
       cursor: pointer;
       padding: 0;
       color: #5f6368;
