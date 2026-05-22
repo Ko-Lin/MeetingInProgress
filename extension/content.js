@@ -64,6 +64,13 @@ function setupDrawerHandlers(overlay) {
   const itemInput = overlay.querySelector('.mp-overlay-item-input');
   const minutesInput = overlay.querySelector('.mp-overlay-minutes-input');
   const pasteInput = overlay.querySelector('.mp-overlay-paste-input');
+  const startTimeInput = overlay.querySelector('.mp-overlay-start-time-input');
+
+  // Set current time as default in the time input
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  startTimeInput.value = `${hours}:${minutes}`;
 
   // Toggle drawer visibility with animation
   drawerToggle.addEventListener('click', () => {
@@ -201,10 +208,26 @@ function overlayAgendaClearAll(overlay) {
 function overlayStartTimer(overlay) {
   if (currentAgenda.length === 0) return;
 
-  const now = Date.now();
+  const startTimeInput = overlay.querySelector('.mp-overlay-start-time-input');
+  let startTime = Date.now();
+
+  // If a start time was specified, use that instead
+  if (startTimeInput && startTimeInput.value) {
+    const [hours, minutes] = startTimeInput.value.split(':');
+    const today = new Date();
+    today.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    startTime = today.getTime();
+
+    // If the time is in the future (e.g., typed tomorrow's time by mistake), use current time
+    if (startTime > Date.now()) {
+      console.log('[Meeting Progress] Start time is in the future, using current time');
+      startTime = Date.now();
+    }
+  }
+
   currentAgenda.forEach((item) => {
     if (item.startTime === null) {
-      item.startTime = now;
+      item.startTime = startTime;
     }
   });
 
@@ -212,10 +235,19 @@ function overlayStartTimer(overlay) {
 
   chrome.runtime.sendMessage({ action: 'startTimer', agenda: currentAgenda }, (response) => {
     if (response?.success) {
-      console.log('[Meeting Progress] Timer started');
+      const startTimeFormatted = new Date(startTime).toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+      console.log(`[Meeting Progress] Timer started at ${startTimeFormatted}`);
       // Close drawer after starting
-      const drawer = overlay.querySelector('.mp-drawer');
-      drawer.style.display = 'none';
+      const drawer = overlay.querySelector('.mp-side-drawer');
+      drawer.classList.add('closing');
+      setTimeout(() => {
+        drawer.style.display = 'none';
+        drawer.classList.remove('closing');
+      }, 300);
     }
   });
 }
@@ -327,6 +359,13 @@ function injectOverlay() {
             <label class="mp-drawer-label">Quick Parse</label>
             <textarea class="mp-overlay-paste-input" placeholder="Paste lines like:&#10;Welcome 5 min&#10;Demo 15 min" style="width: 100%; height: 80px; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>
             <button class="mp-overlay-parse-btn" style="width: 100%; margin-top: 6px; padding: 8px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">Parse and Add</button>
+          </div>
+
+          <!-- Start Time Section -->
+          <div class="mp-drawer-section">
+            <label class="mp-drawer-label">Meeting Start Time (Optional)</label>
+            <input type="time" class="mp-overlay-start-time-input" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 12px;">
+            <div style="font-size: 11px; color: #5f6368; margin-top: 4px;">Leave blank to use current time</div>
           </div>
 
           <!-- Start Timer Section -->
