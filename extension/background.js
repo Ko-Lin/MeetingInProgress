@@ -4,10 +4,11 @@ let currentAgenda = [];
 let currentIndex = 0;
 let timerRunning = false;
 let updateIntervalId = null;
+let manuallyNavigated = false;
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'startTimer') {
-    const success = startTimer(request.agenda, request.meetingEndTime);
+    const success = startTimer(request.agenda);
     sendResponse({ success });
   } else if (request.action === 'advanceItem') {
     advanceItem();
@@ -20,18 +21,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true });
   } else if (request.action === 'getTimerStatus') {
     sendResponse({ timerRunning });
+  } else if (request.action === 'updateAgenda') {
+    // Update agenda while timer is running
+    currentAgenda = request.agenda;
+    currentIndex = 0;  // Reset to first item when agenda is updated
+    manuallyNavigated = false;  // Reset manual navigation when agenda changes
+    updateOverlay();
+    sendResponse({ success: true });
   }
 });
 
-function startTimer(agenda, meetingEndTime) {
+function startTimer(agenda) {
   if (!agenda || agenda.length === 0) return false;
 
   currentAgenda = agenda;
-  if (meetingEndTime) {
-    currentAgenda.meetingEndTime = meetingEndTime;
-  }
   currentIndex = 0;
   timerRunning = true;
+  manuallyNavigated = false;
 
   // Clear any existing interval
   if (updateIntervalId) clearInterval(updateIntervalId);
@@ -57,60 +63,54 @@ function stopTimer() {
 }
 
 function advanceItem() {
-  if (!timerRunning || currentIndex >= currentAgenda.length - 1) return;
+  if (currentIndex >= currentAgenda.length - 1) return;
 
   currentIndex++;
+  manuallyNavigated = true;
   updateOverlay();
 }
 
 function previousItem() {
-  if (!timerRunning || currentIndex <= 0) return;
+  if (currentIndex <= 0) return;
 
   currentIndex--;
+  manuallyNavigated = true;
   updateOverlay();
 }
 
 function updateOverlay() {
-  if (!timerRunning || currentAgenda.length === 0) return;
+  if (currentAgenda.length === 0) return;
 
   const now = Date.now();
 
   // Calculate total time allocated to agenda items
   const agendaDurationMinutes = currentAgenda.reduce((sum, item) => sum + item.minutes, 0);
 
-  // Calculate total meeting duration (if meeting end time is set)
-  let totalMeetingMinutes = agendaDurationMinutes;
-  if (currentAgenda.meetingEndTime) {
-    const [endHours, endMinutes] = currentAgenda.meetingEndTime.split(':').map(Number);
-    const startDate = new Date(currentAgenda[0].startTime);
-    const endDate = new Date(currentAgenda[0].startTime);
-    endDate.setHours(endHours, endMinutes, 0, 0);
-    totalMeetingMinutes = (endDate.getTime() - currentAgenda[0].startTime) / (1000 * 60);
-  }
-
   // Calculate actual elapsed time since meeting started
   const totalElapsedMs = now - currentAgenda[0].startTime;
   const totalElapsedMinutes = totalElapsedMs / (1000 * 60);
 
-  // Auto-calculate currentIndex based on elapsed time (account for all completed items)
-  let autoIndex = currentAgenda.length - 1; // Default to last item
-  let accumulatedTime = 0;
+  // Auto-calculate currentIndex based on elapsed time, but respect manual navigation
+  let effectiveIndex = currentIndex;
 
-  for (let i = 0; i < currentAgenda.length; i++) {
-    accumulatedTime += currentAgenda[i].minutes;
-    if (totalElapsedMinutes < accumulatedTime) {
-      autoIndex = i;
-      break;
+  if (!manuallyNavigated) {
+    let autoIndex = currentAgenda.length - 1; // Default to last item
+    let accumulatedTime = 0;
+
+    for (let i = 0; i < currentAgenda.length; i++) {
+      accumulatedTime += currentAgenda[i].minutes;
+      if (totalElapsedMinutes < accumulatedTime) {
+        autoIndex = i;
+        break;
+      }
     }
+
+    // Use auto-calculated index based on elapsed time
+    effectiveIndex = (totalElapsedMinutes >= agendaDurationMinutes) ? currentAgenda.length - 1 : autoIndex;
   }
 
-  // Use auto-calculated index based on elapsed time
-  // If elapsed time exceeds all items, show last item as active
-  const effectiveIndex = (totalElapsedMinutes >= agendaDurationMinutes) ? currentAgenda.length - 1 : autoIndex;
-
-  // Overall progress is based on total meeting duration, not just agenda
-  // Continue counting into overtime (don't cap at 1.0)
-  const overallProgress = totalElapsedMinutes / totalMeetingMinutes;
+  // Overall progress is based on agenda duration (capped at 1.0)
+  const overallProgress = Math.min(totalElapsedMinutes / agendaDurationMinutes, 1.0);
 
   chrome.tabs.query({ url: 'https://meet.google.com/*' }, (tabs) => {
     tabs.forEach((tab) => {
@@ -120,8 +120,7 @@ function updateOverlay() {
           action: 'updateProgress',
           agenda: currentAgenda,
           currentIndex: effectiveIndex,
-          overallProgress,
-          meetingEndTime: currentAgenda.meetingEndTime
+          overallProgress
         },
         (response) => {
           // Silently handle errors if content script isn't ready

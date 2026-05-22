@@ -19,7 +19,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       renderAgendaItems(overlay);
     }
 
-    updateOverlayProgress(request.agenda, request.currentIndex, request.overallProgress, request.meetingEndTime);
+    updateOverlayProgress(request.agenda, request.currentIndex, request.overallProgress);
     sendResponse({ success: true });
   } else if (request.action === 'injectOverlay') {
     const existing = document.getElementById('meeting-progress-overlay');
@@ -94,17 +94,9 @@ function setupDrawerHandlers(overlay) {
           .map(item => `${item.description} ${item.minutes}m`)
           .join('\n');
 
-        // Add end time if present
-        if (template.endTime) {
-          templateText += '\n' + template.endTime;
-        }
-
         // Populate the Quick Parse textarea
         pasteInput.value = templateText;
         console.log(`[Meeting Progress] Loaded template into Quick Parse: ${template.name}`);
-
-        // Reset dropdown
-        templateSelect.value = '';
       }
     });
   });
@@ -196,7 +188,7 @@ function overlayParseAndAdd(overlay) {
   let lines = text.split('\n').map(l => l.trim()).filter(l => l);
   const timePattern = /^(\d{1,2}):(\d{2})$/;
   let parsed = 0;
-  let endTime = null;
+  let startTimeMs = Date.now();
 
   // Clear the agenda to replace it
   currentAgenda = [];
@@ -208,18 +200,14 @@ function overlayParseAndAdd(overlay) {
     const hours = timeMatch[1].padStart(2, '0');
     const minutes = timeMatch[2];
     startTimeInput.value = `${hours}:${minutes}`;
+
+    // Convert to actual timestamp
+    const startDate = new Date();
+    startDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    startTimeMs = startDate.getTime();
+
     console.log('[Meeting Progress] Start time set to ' + startTimeInput.value);
     lines = lines.slice(1);
-  }
-
-  // Check if last line is a time (HH:MM format) - end time (store it)
-  if (lines.length > 0 && timePattern.test(lines[lines.length - 1])) {
-    const endTimeMatch = lines[lines.length - 1].match(timePattern);
-    const hours = endTimeMatch[1].padStart(2, '0');
-    const minutes = endTimeMatch[2];
-    endTime = `${hours}:${minutes}`;
-    console.log('[Meeting Progress] Meeting end time: ' + endTime);
-    lines = lines.slice(0, -1);
   }
 
   const durationOnlyPattern = /^(.+?)\s+(\d+)\s*(?:min(?:ute)?s?|m)$/i;
@@ -231,20 +219,26 @@ function overlayParseAndAdd(overlay) {
         id: Date.now() + Math.random(),
         description: match[1].trim(),
         minutes: parseInt(match[2], 10),
-        startTime: null
+        startTime: startTimeMs
       });
       parsed++;
     }
   });
 
   if (parsed > 0) {
-    // Store end time separately (array properties don't persist in chrome.storage)
     const storageData = { agenda: currentAgenda };
-    if (endTime) {
-      currentAgenda.meetingEndTime = endTime;
-      storageData.meetingEndTime = endTime;
-    }
     chrome.storage.sync.set(storageData);
+
+    // Update background service worker with new agenda if timer is running
+    chrome.runtime.sendMessage(
+      { action: 'updateAgenda', agenda: currentAgenda },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.log('[Meeting Progress] Could not update background agenda:', chrome.runtime.lastError);
+        }
+      }
+    );
+
     // Don't clear pasteInput - keep it so user can quickly modify and re-parse
     renderAgendaItems(overlay);
     console.log(`[Meeting Progress] Parsed and updated agenda with ${parsed} items`);
@@ -252,43 +246,17 @@ function overlayParseAndAdd(overlay) {
     console.log('[Meeting Progress] No valid items found in parse');
   }
 }
-}
 
 function overlayStartTimer(overlay) {
   if (currentAgenda.length === 0) return;
 
-  const startTimeInput = overlay.querySelector('.mp-overlay-start-time-input');
-  let startTime = Date.now();
-
-  // If a start time was specified, use that instead
-  if (startTimeInput && startTimeInput.value) {
-    const [hours, minutes] = startTimeInput.value.split(':');
-    const today = new Date();
-    today.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-    startTime = today.getTime();
-
-    console.log('[Meeting Progress] Start time set to ' + startTimeInput.value);
-  }
-
-  currentAgenda.forEach((item) => {
-    if (item.startTime === null) {
-      item.startTime = startTime;
-    }
-  });
-
-  const storageData = { agenda: currentAgenda };
-  if (currentAgenda.meetingEndTime) {
-    storageData.meetingEndTime = currentAgenda.meetingEndTime;
-  }
-  chrome.storage.sync.set(storageData);
-
-  // Pass the meeting end time explicitly to background service worker
-  chrome.runtime.sendMessage({ action: 'startTimer', agenda: currentAgenda, meetingEndTime: currentAgenda.meetingEndTime }, (response) => {
+  chrome.runtime.sendMessage({ action: 'startTimer', agenda: currentAgenda }, (response) => {
     if (response?.success) {
-      const startTimeFormatted = new Date(startTime).toLocaleTimeString('en-US', {
-        hour: 'numeric',
+      const startDate = new Date(currentAgenda[0].startTime);
+      const startTimeFormatted = startDate.toLocaleTimeString('en-US', {
+        hour: '2-digit',
         minute: '2-digit',
-        hour12: true
+        hour12: false
       });
       console.log(`[Meeting Progress] Timer started at ${startTimeFormatted}`);
       // Close drawer after starting
@@ -377,6 +345,15 @@ function injectOverlay() {
       <div class="mp-controls mp-controls-top">
         <button class="mp-btn-prev" disabled>← Prev</button>
         <button class="mp-btn-next" disabled>Next →</button>
+      </div>
+      <div class="mp-current-item-preview">
+        <div class="mp-current-item-preview-name">—</div>
+        <div class="mp-current-item-preview-progress">
+          <div class="mp-current-item-preview-bar">
+            <div class="mp-fill" style="width: 0%"></div>
+          </div>
+          <div class="mp-current-item-preview-time">0m / 0m</div>
+        </div>
       </div>
       <div class="mp-content">
         <div class="mp-agenda-empty">Waiting for agenda...</div>
@@ -501,17 +478,6 @@ function injectOverlay() {
     }
   });
 
-  // Load current agenda and meeting end time from storage
-  chrome.storage.sync.get(['agenda', 'meetingEndTime'], (result) => {
-    if (result.agenda && result.agenda.length > 0) {
-      currentAgenda = result.agenda;
-      if (result.meetingEndTime) {
-        currentAgenda.meetingEndTime = result.meetingEndTime;
-      }
-      renderAgendaItems(overlay);
-    }
-  });
-
   // Set up drawer toggle
   setupDrawerHandlers(overlay);
 
@@ -596,7 +562,7 @@ function updateOverlayVisibility() {
   }
 }
 
-function updateOverlayProgress(agenda, index, overallProgress, meetingEndTime) {
+function updateOverlayProgress(agenda, index, overallProgress) {
   const overlay = document.getElementById('meeting-progress-overlay');
   if (!overlay) return;
 
@@ -751,22 +717,10 @@ function updateOverlayProgress(agenda, index, overallProgress, meetingEndTime) {
     const startDate = new Date(startTimeMs);
     const startTimeStr = startDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-    // Scheduled end time
-    let scheduledEndMs, scheduledEndDate, scheduledEndStr;
-
-    if (meetingEndTime) {
-      // Use the specified end time from template
-      const [endHours, endMinutes] = meetingEndTime.split(':').map(Number);
-      scheduledEndDate = new Date(startTimeMs);
-      scheduledEndDate.setHours(endHours, endMinutes, 0, 0);
-      scheduledEndMs = scheduledEndDate.getTime();
-      scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    } else {
-      // Calculate from start time + duration
-      scheduledEndMs = startTimeMs + (totalDurationMinutes * 60 * 1000);
-      scheduledEndDate = new Date(scheduledEndMs);
-      scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    }
+    // Calculate scheduled end time from start + duration
+    const scheduledEndMs = startTimeMs + (totalDurationMinutes * 60 * 1000);
+    const scheduledEndDate = new Date(scheduledEndMs);
+    const scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 
     // Calculate remaining time until meeting end
     const remainingMs = Math.max(0, scheduledEndMs - now);
@@ -794,6 +748,35 @@ function updateOverlayProgress(agenda, index, overallProgress, meetingEndTime) {
   if (prevBtn && nextBtn) {
     prevBtn.disabled = index === 0;
     nextBtn.disabled = index >= agenda.length - 1;
+  }
+
+  // Update minimized preview
+  if (agenda && agenda.length > 0 && index < agenda.length) {
+    const currentItem = agenda[index];
+    const previewName = overlay.querySelector('.mp-current-item-preview-name');
+    const previewBar = overlay.querySelector('.mp-current-item-preview-bar .mp-fill');
+    const previewTime = overlay.querySelector('.mp-current-item-preview-time');
+
+    if (previewName) previewName.textContent = currentItem.description;
+
+    if (previewBar && previewTime) {
+      const now = Date.now();
+      const totalElapsedMs = now - agenda[0].startTime;
+      const totalElapsedMinutes = totalElapsedMs / (1000 * 60);
+
+      let previousItemsAllocated = 0;
+      for (let i = 0; i < index; i++) {
+        previousItemsAllocated += agenda[i].minutes;
+      }
+
+      const itemElapsed = Math.max(0, totalElapsedMinutes - previousItemsAllocated);
+      const itemProgress = Math.min(itemElapsed / currentItem.minutes, 1);
+      previewBar.style.width = Math.round(itemProgress * 100) + '%';
+
+      const minutes = Math.floor(itemElapsed);
+      const seconds = Math.round((itemElapsed - minutes) * 60);
+      previewTime.textContent = `${minutes}m / ${currentItem.minutes}m`;
+    }
   }
 }
 
@@ -1151,9 +1134,18 @@ function injectStyles() {
 
     .mp-container.mp-minimized {
       height: auto;
+      width: 300px;
     }
 
     .mp-container.mp-minimized .mp-content {
+      display: none;
+    }
+
+    .mp-container.mp-minimized .mp-agenda-items {
+      display: none;
+    }
+
+    .mp-container.mp-minimized .mp-overall-section {
       display: none;
     }
 
@@ -1165,8 +1157,51 @@ function injectStyles() {
       display: flex;
     }
 
-    .mp-container.mp-minimized {
-      width: 220px;
+    .mp-container.mp-minimized .mp-current-item-preview {
+      display: block;
+      padding: 8px 12px;
+      border-bottom: 1px solid #e8eaed;
+    }
+
+    .mp-container:not(.mp-minimized) .mp-current-item-preview {
+      display: none;
+    }
+
+    .mp-current-item-preview {
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .mp-current-item-preview-name {
+      font-weight: 500;
+      color: #202124;
+      margin-bottom: 4px;
+    }
+
+    .mp-current-item-preview-progress {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mp-current-item-preview-bar {
+      flex: 1;
+      height: 4px;
+      background: #e8eaed;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .mp-current-item-preview-bar .mp-fill {
+      height: 100%;
+      background: #1f73e8;
+      transition: width 0.3s ease;
+    }
+
+    .mp-current-item-preview-time {
+      font-size: 11px;
+      color: #5f6368;
+      white-space: nowrap;
     }
 
     @keyframes pulseOutline {
