@@ -187,14 +187,14 @@ function importFromDescription() {
       importBtn.textContent = '📋 Import from Description';
 
       if (chrome.runtime.lastError || !response?.success) {
-        alert('No meeting description found. Please open meeting details first.');
+        alert('No meeting description found. Try using "Quick Parse" instead - paste your agenda items there.');
         return;
       }
 
       const items = response.items || [];
 
       if (items.length === 0) {
-        alert('No agenda items found in the description. Try the "Quick Parse" feature instead.');
+        alert('No agenda items detected in the description. Use "Quick Parse" to manually paste:\n\nWelcome 5 min\nDemo 15 min\nQ&A 10 min');
         return;
       }
 

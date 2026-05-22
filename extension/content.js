@@ -933,39 +933,49 @@ async function generateWrapupSuggestion(overlay, agenda, index, apiKey) {
 }
 
 function extractMeetingDescription() {
-  // Try multiple selectors to find the meeting description
-  const selectors = [
-    // Google Meet details panel
-    '[aria-label*="description" i]',
-    '[aria-label*="Details" i]',
-    '[aria-label*="info" i]',
-    // Various Meet DOM structures
-    '[data-tooltip*="description" i]',
-    // Text content that might contain description
-    'div[role="document"]',
-  ];
+  // Try multiple approaches to find meeting description
 
-  for (const selector of selectors) {
-    const element = document.querySelector(selector);
-    if (element) {
-      const text = element.textContent?.trim();
-      if (text && text.length > 20) { // Must be substantial
-        return text;
+  // Approach 1: Look for description text in various panels
+  const textElements = document.querySelectorAll('span, div, p');
+  let descriptionText = null;
+
+  for (const element of textElements) {
+    const text = element.textContent?.trim();
+
+    // Look for paragraphs that contain agenda-like content
+    if (text && text.length > 30 && text.length < 2000) {
+      // Check if it looks like an agenda (has numbers, bullet points, or common keywords)
+      if (/(\d+\s*min|•|agenda|topics?|items?|discussion|agenda items|outline|points|schedule)/i.test(text)) {
+        // Make sure it's not just the UI controls
+        if (!/^(meeting|invite|details|copy|phone|dial-in|more|attachments|all|description)/i.test(text)) {
+          descriptionText = text;
+          break;
+        }
       }
     }
   }
 
-  // Try to find description in the main content area
-  const mainArea = document.querySelector('[role="main"]');
-  if (mainArea) {
-    const allText = mainArea.textContent;
-    // Look for common patterns like "Agenda:" or bullet points
-    if (allText && allText.includes('agenda')) {
-      return allText;
+  // Approach 2: Try to find in details panel specifically
+  if (!descriptionText) {
+    const detailsPanel = document.querySelector('[aria-label*="details" i]');
+    if (detailsPanel) {
+      descriptionText = detailsPanel.textContent?.trim();
     }
   }
 
-  return null;
+  // Approach 3: Look for any substantial text block that might be description
+  if (!descriptionText) {
+    const allDivs = document.querySelectorAll('div[style*="color"], span');
+    for (const div of allDivs) {
+      const text = div.textContent?.trim();
+      if (text && text.length > 50 && text.includes('\n')) {
+        descriptionText = text;
+        break;
+      }
+    }
+  }
+
+  return descriptionText || null;
 }
 
 function parseDescriptionToAgenda(description) {
