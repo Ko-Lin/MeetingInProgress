@@ -32,12 +32,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true });
   } else if (request.action === 'extractMeetingDescription') {
     const description = extractMeetingDescription();
-    sendResponse({ success: true, description });
-  } else if (request.action === 'parseDescriptionWithAI') {
-    parseDescriptionWithAI(request.description, request.apiKey, (result) => {
-      sendResponse(result);
-    });
-    return true; // Async response
+    if (description) {
+      const items = parseDescriptionToAgenda(description);
+      sendResponse({ success: true, description, items });
+    } else {
+      sendResponse({ success: false, error: 'No description found' });
+    }
   }
 });
 
@@ -915,78 +915,62 @@ function extractMeetingDescription() {
   return null;
 }
 
-async function parseDescriptionWithAI(description, apiKey, callback) {
-  if (!description) {
-    callback({ success: false, error: 'No description found' });
-    return;
-  }
+function parseDescriptionToAgenda(description) {
+  // Parse agenda items from description using regex
+  // Supports formats like:
+  // - "Item name 5 min"
+  // - "Item name (10 minutes)"
+  // - "• Item name 5m"
+  // - Bullet points on separate lines
 
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 500,
-        messages: [
-          {
-            role: 'user',
-            content: `Extract agenda items from this meeting description. Return a JSON array with objects like {description: "item name", minutes: estimated_minutes}.
+  const lines = description.split('\n').filter(line => line.trim().length > 0);
+  const pattern = /(\d+)\s*min(?:ute)?s?/i;
+  const items = [];
 
-Only return the JSON array, no other text. If no specific times are mentioned, estimate 5-10 minutes per item.
+  lines.forEach((line) => {
+    // Skip lines that are too short or don't look like agenda items
+    const trimmed = line.replace(/^[\s•\-*]+/, '').trim();
+    if (trimmed.length < 3) return;
 
-Meeting description:
-${description}`
-          }
-        ]
-      })
-    });
+    const match = trimmed.match(pattern);
+    if (match) {
+      const minutes = parseInt(match[1]);
+      const description = trimmed.replace(pattern, '').trim();
 
-    if (!response.ok) {
-      const error = await response.json();
-      callback({
-        success: false,
-        error: error.error?.message || 'API error'
-      });
-      return;
-    }
-
-    const data = await response.json();
-    const responseText = data.content?.[0]?.text || '';
-
-    // Parse the JSON response
-    try {
-      const agenda = JSON.parse(responseText);
-      if (Array.isArray(agenda)) {
-        callback({
-          success: true,
-          agenda: agenda.map(item => ({
-            description: item.description || item.name || '',
-            minutes: parseInt(item.minutes) || 5
-          })).filter(item => item.description)
-        });
-      } else {
-        callback({
-          success: false,
-          error: 'Invalid response format'
+      if (description && minutes > 0) {
+        items.push({
+          description,
+          minutes: Math.max(1, minutes)
         });
       }
-    } catch (e) {
-      callback({
-        success: false,
-        error: 'Failed to parse AI response'
+    }
+  });
+
+  // If we found items with times, return them
+  if (items.length > 0) {
+    return items;
+  }
+
+  // If no times found, try to split by bullets/lines and estimate time
+  const estimatedItems = [];
+  const estimatedMinutes = 5; // Default per item
+
+  lines.forEach((line) => {
+    const trimmed = line.replace(/^[\s•\-*]+/, '').trim();
+    // Remove any time notation first
+    const withoutTime = trimmed.replace(/[\(\[].*?[\)\]]/g, '')
+      .replace(pattern, '')
+      .trim();
+
+    if (withoutTime.length >= 3) {
+      estimatedItems.push({
+        description: withoutTime,
+        minutes: estimatedMinutes
       });
     }
-  } catch (error) {
-    callback({
-      success: false,
-      error: error.message
-    });
-  }
+  });
+
+  return estimatedItems.length > 0 ? estimatedItems : [];
 }
 
 function makeDraggable(element) {

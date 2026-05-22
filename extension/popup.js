@@ -181,63 +181,41 @@ function importFromDescription() {
       return;
     }
 
-    // Step 1: Extract description from the Meet page
+    // Extract description and parse agenda items
     chrome.tabs.sendMessage(tabs[0].id, { action: 'extractMeetingDescription' }, (response) => {
-      if (chrome.runtime.lastError || !response?.description) {
-        importBtn.disabled = false;
-        importBtn.textContent = '📋 Import from Description';
+      importBtn.disabled = false;
+      importBtn.textContent = '📋 Import from Description';
+
+      if (chrome.runtime.lastError || !response?.success) {
         alert('No meeting description found. Please open meeting details first.');
         return;
       }
 
-      // Step 2: Get API key and parse with Claude
-      chrome.storage.sync.get(['apiKey'], (result) => {
-        if (!result.apiKey) {
-          importBtn.disabled = false;
-          importBtn.textContent = '📋 Import from Description';
-          alert('API key not set. Please configure it in settings.');
-          return;
+      const items = response.items || [];
+
+      if (items.length === 0) {
+        alert('No agenda items found in the description. Try the "Quick Parse" feature instead.');
+        return;
+      }
+
+      // Add parsed items to agenda
+      let added = 0;
+      items.forEach((item) => {
+        if (item.description && item.minutes > 0) {
+          agenda.push({
+            id: Date.now() + Math.random(),
+            description: item.description,
+            minutes: item.minutes,
+            startTime: null
+          });
+          added++;
         }
-
-        chrome.tabs.sendMessage(
-          tabs[0].id,
-          {
-            action: 'parseDescriptionWithAI',
-            description: response.description,
-            apiKey: result.apiKey
-          },
-          (parseResponse) => {
-            importBtn.disabled = false;
-            importBtn.textContent = '📋 Import from Description';
-
-            if (!parseResponse?.success) {
-              alert(`Error: ${parseResponse?.error || 'Failed to parse description'}`);
-              return;
-            }
-
-            // Step 3: Add parsed items to agenda
-            const parsedItems = parseResponse.agenda || [];
-            let added = 0;
-
-            parsedItems.forEach((item) => {
-              if (item.description && item.minutes > 0) {
-                agenda.push({
-                  id: Date.now() + Math.random(),
-                  description: item.description,
-                  minutes: item.minutes,
-                  startTime: null
-                });
-                added++;
-              }
-            });
-
-            if (added > 0) {
-              saveAgenda();
-              renderAgenda();
-            }
-          }
-        );
       });
+
+      if (added > 0) {
+        saveAgenda();
+        renderAgenda();
+      }
     });
   });
 }
