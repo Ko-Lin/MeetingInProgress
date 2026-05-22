@@ -30,6 +30,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     injectOverlay();
     sendResponse({ success: true });
+  } else if (request.action === 'removeOverlay') {
+    const overlay = document.getElementById('meeting-progress-overlay');
+    if (overlay) {
+      overlay.remove();
+      sendResponse({ success: true });
+    } else {
+      sendResponse({ success: false, error: 'Overlay not found' });
+    }
+  } else if (request.action === 'checkOverlayStatus') {
+    const overlay = document.getElementById('meeting-progress-overlay');
+    sendResponse({ overlayInjected: !!overlay });
   } else if (request.action === 'extractMeetingDescription') {
     const description = extractMeetingDescription();
     if (description) {
@@ -40,6 +51,237 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
 });
+
+// Drawer management functions
+function setupDrawerHandlers(overlay) {
+  const drawer = overlay.querySelector('.mp-drawer');
+  const drawerToggle = overlay.querySelector('.mp-drawer-toggle');
+  const drawerClose = overlay.querySelector('.mp-drawer-close');
+  const addBtn = overlay.querySelector('.mp-overlay-add-btn');
+  const parseBtn = overlay.querySelector('.mp-overlay-parse-btn');
+  const importBtn = overlay.querySelector('.mp-overlay-import-btn');
+  const startTimerBtn = overlay.querySelector('.mp-overlay-start-timer-btn');
+  const clearBtn = overlay.querySelector('.mp-overlay-clear-btn');
+  const itemInput = overlay.querySelector('.mp-overlay-item-input');
+  const minutesInput = overlay.querySelector('.mp-overlay-minutes-input');
+  const pasteInput = overlay.querySelector('.mp-overlay-paste-input');
+
+  // Toggle drawer visibility
+  drawerToggle.addEventListener('click', () => {
+    const isOpen = drawer.style.display !== 'none';
+    drawer.style.display = isOpen ? 'none' : 'block';
+    chrome.storage.session?.setItem('mp-drawer-open', !isOpen);
+  });
+
+  drawerClose.addEventListener('click', () => {
+    drawer.style.display = 'none';
+    chrome.storage.session?.setItem('mp-drawer-open', false);
+  });
+
+  // Add item
+  addBtn.addEventListener('click', () => overlayAddItem(overlay));
+  itemInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') overlayAddItem(overlay);
+  });
+
+  // Parse and add
+  parseBtn.addEventListener('click', () => overlayParseAndAdd(overlay));
+
+  // Import from description
+  importBtn.addEventListener('click', () => overlayImportFromDescription(overlay));
+
+  // Start timer
+  startTimerBtn.addEventListener('click', () => overlayStartTimer(overlay));
+
+  // Clear all
+  clearBtn.addEventListener('click', () => {
+    if (confirm('Clear all agenda items?')) {
+      overlayAgendaClearAll(overlay);
+    }
+  });
+
+  // Load drawer state
+  chrome.storage.session?.getItem('mp-drawer-open', (result) => {
+    if (result?.['mp-drawer-open']) {
+      drawer.style.display = 'block';
+    }
+  });
+}
+
+function renderDrawerAgendaList(overlay) {
+  const listContainer = overlay.querySelector('.mp-overlay-agenda-list');
+
+  if (currentAgenda.length === 0) {
+    listContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #80868b; font-size: 12px;">No items yet</div>';
+    return;
+  }
+
+  listContainer.innerHTML = currentAgenda
+    .map((item, index) => `
+      <div style="padding: 8px 12px; border-bottom: 1px solid #e8eaed; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer;" class="mp-drawer-item" data-item-id="${item.id}">
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-size: 12px; color: #202124; word-break: break-word;">${item.description}</div>
+          <div style="font-size: 11px; color: #5f6368;">${item.minutes}m</div>
+        </div>
+        <button class="mp-drawer-item-delete" data-item-id="${item.id}" style="background: none; border: none; color: #d33b27; cursor: pointer; font-size: 14px; padding: 0; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">✕</button>
+      </div>
+    `)
+    .join('');
+
+  // Add delete handlers
+  listContainer.querySelectorAll('.mp-drawer-item-delete').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const itemId = parseInt(btn.dataset.itemId);
+      overlayDeleteItem(overlay, itemId);
+    });
+  });
+}
+
+function overlayAddItem(overlay) {
+  const itemInput = overlay.querySelector('.mp-overlay-item-input');
+  const minutesInput = overlay.querySelector('.mp-overlay-minutes-input');
+
+  const description = itemInput.value.trim();
+  const minutes = parseInt(minutesInput.value) || 0;
+
+  if (!description || minutes <= 0) {
+    console.log('[Meeting Progress] Invalid item');
+    return;
+  }
+
+  currentAgenda.push({
+    id: Date.now() + Math.random(),
+    description,
+    minutes,
+    startTime: null
+  });
+
+  chrome.storage.sync.set({ agenda: currentAgenda });
+  itemInput.value = '';
+  renderDrawerAgendaList(overlay);
+  renderAgendaItems(overlay);
+}
+
+function overlayParseAndAdd(overlay) {
+  const pasteInput = overlay.querySelector('.mp-overlay-paste-input');
+  const text = pasteInput.value.trim();
+
+  if (!text) {
+    console.log('[Meeting Progress] No text to parse');
+    return;
+  }
+
+  const lines = text.split('\n');
+  const pattern = /(\d+)\s*min(?:ute)?s?/i;
+  let parsed = 0;
+
+  lines.forEach((line) => {
+    const match = line.match(pattern);
+    if (match) {
+      const minutes = parseInt(match[1]);
+      const description = line.replace(pattern, '').trim();
+
+      if (description && minutes > 0) {
+        currentAgenda.push({
+          id: Date.now() + Math.random(),
+          description,
+          minutes,
+          startTime: null
+        });
+        parsed++;
+      }
+    }
+  });
+
+  if (parsed > 0) {
+    chrome.storage.sync.set({ agenda: currentAgenda });
+    pasteInput.value = '';
+    renderDrawerAgendaList(overlay);
+    renderAgendaItems(overlay);
+  }
+}
+
+function overlayDeleteItem(overlay, itemId) {
+  currentAgenda = currentAgenda.filter((item) => item.id !== itemId);
+  chrome.storage.sync.set({ agenda: currentAgenda });
+  renderDrawerAgendaList(overlay);
+  renderAgendaItems(overlay);
+}
+
+function overlayAgendaClearAll(overlay) {
+  currentAgenda = [];
+  chrome.storage.sync.set({ agenda: currentAgenda });
+  renderDrawerAgendaList(overlay);
+  renderAgendaItems(overlay);
+}
+
+function overlayImportFromDescription(overlay) {
+  const importBtn = overlay.querySelector('.mp-overlay-import-btn');
+  importBtn.disabled = true;
+  importBtn.textContent = 'Importing...';
+
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs || !tabs[0]) {
+      importBtn.disabled = false;
+      importBtn.textContent = '📋 Import from Description';
+      return;
+    }
+
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'extractMeetingDescription' }, (response) => {
+      importBtn.disabled = false;
+      importBtn.textContent = '📋 Import from Description';
+
+      if (chrome.runtime.lastError || !response?.success) {
+        console.log('[Meeting Progress] Failed to extract description');
+        return;
+      }
+
+      const items = response.items || [];
+      let added = 0;
+
+      items.forEach((item) => {
+        if (item.description && item.minutes > 0) {
+          currentAgenda.push({
+            id: Date.now() + Math.random(),
+            description: item.description,
+            minutes: item.minutes,
+            startTime: null
+          });
+          added++;
+        }
+      });
+
+      if (added > 0) {
+        chrome.storage.sync.set({ agenda: currentAgenda });
+        renderDrawerAgendaList(overlay);
+        renderAgendaItems(overlay);
+      }
+    });
+  });
+}
+
+function overlayStartTimer(overlay) {
+  if (currentAgenda.length === 0) return;
+
+  const now = Date.now();
+  currentAgenda.forEach((item) => {
+    if (item.startTime === null) {
+      item.startTime = now;
+    }
+  });
+
+  chrome.storage.sync.set({ agenda: currentAgenda });
+
+  chrome.runtime.sendMessage({ action: 'startTimer', agenda: currentAgenda }, (response) => {
+    if (response?.success) {
+      console.log('[Meeting Progress] Timer started');
+      // Close drawer after starting
+      const drawer = overlay.querySelector('.mp-drawer');
+      drawer.style.display = 'none';
+    }
+  });
+}
 
 // Detect when meeting is joined by watching for Meet's UI elements
 function detectMeetingJoined() {
@@ -108,6 +350,7 @@ function injectOverlay() {
       <div class="mp-header mp-draggable">
         <span class="mp-title">Meeting Progress</span>
         <div class="mp-header-buttons">
+          <button class="mp-drawer-toggle" aria-label="Toggle agenda drawer" title="Edit agenda">📋</button>
           <button class="mp-minimize" aria-label="Minimize">−</button>
           <button class="mp-close" aria-label="Close overlay">×</button>
         </div>
@@ -123,6 +366,52 @@ function injectOverlay() {
         </div>
       </div>
       <div class="mp-suggestion-area" style="display: none; padding: 12px 16px; border-top: 1px solid #e8eaed; background: #f8f9fa; font-size: 12px; color: #202124; line-height: 1.4;"></div>
+
+      <!-- Drawer for agenda management -->
+      <div class="mp-drawer" style="display: none;">
+        <div class="mp-drawer-header">
+          <span>Edit Agenda</span>
+          <button class="mp-drawer-close" aria-label="Close drawer">×</button>
+        </div>
+
+        <div class="mp-drawer-content">
+          <!-- Add Item Section -->
+          <div class="mp-drawer-section">
+            <label class="mp-drawer-label">Add Item</label>
+            <div class="mp-drawer-input-group">
+              <input type="text" class="mp-overlay-item-input" placeholder="Item description" style="flex: 1; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 3px; font-size: 12px;">
+              <input type="number" class="mp-overlay-minutes-input" placeholder="Min" min="1" max="120" style="width: 50px; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 3px; font-size: 12px; margin: 0 4px;">
+              <button class="mp-overlay-add-btn" style="padding: 6px 12px; background: #1f73e8; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: 500;">Add</button>
+            </div>
+          </div>
+
+          <!-- Quick Parse Section -->
+          <div class="mp-drawer-section">
+            <label class="mp-drawer-label">Quick Parse</label>
+            <textarea class="mp-overlay-paste-input" placeholder="Paste lines like:&#10;Welcome 5 min&#10;Demo 15 min&#10;Q&A 10 min" style="width: 100%; min-height: 60px; padding: 6px 8px; border: 1px solid #dadce0; border-radius: 3px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>
+            <button class="mp-overlay-parse-btn" style="width: 100%; margin-top: 4px; padding: 6px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: 500;">Parse and Add</button>
+          </div>
+
+          <!-- Import Section -->
+          <div class="mp-drawer-section">
+            <button class="mp-overlay-import-btn" style="width: 100%; padding: 6px 12px; background: white; color: #1f73e8; border: 1px solid #dadce0; border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: 500;">📋 Import from Description</button>
+          </div>
+
+          <!-- Agenda List Section -->
+          <div class="mp-drawer-section">
+            <label class="mp-drawer-label">Agenda Items</label>
+            <div class="mp-overlay-agenda-list" style="background: #f8f9fa; border: 1px solid #dadce0; border-radius: 3px; max-height: 200px; overflow-y: auto;">
+              <div style="padding: 12px; text-align: center; color: #80868b; font-size: 12px;">No items yet</div>
+            </div>
+          </div>
+
+          <!-- Start Timer Section -->
+          <div class="mp-drawer-section">
+            <button class="mp-overlay-start-timer-btn" style="width: 100%; padding: 8px 12px; background: #1f73e8; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 13px; font-weight: 500; margin-top: 8px;">Start Timer</button>
+            <button class="mp-overlay-clear-btn" style="width: 100%; padding: 6px 12px; background: white; color: #d33b27; border: 1px solid #d33b27; border-radius: 3px; cursor: pointer; font-size: 12px; font-weight: 500; margin-top: 4px;">Clear All</button>
+          </div>
+        </div>
+      </div>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -203,13 +492,17 @@ function injectOverlay() {
     }
   });
 
-  // Load current agenda
+  // Load current agenda and render in drawer
   chrome.storage.sync.get(['agenda'], (result) => {
     if (result.agenda && result.agenda.length > 0) {
       currentAgenda = result.agenda;
       renderAgendaItems(overlay);
+      renderDrawerAgendaList(overlay); // Render in drawer too
     }
   });
+
+  // Set up drawer toggle
+  setupDrawerHandlers(overlay);
 
   console.log('[Meeting Progress] Overlay injected successfully');
 }
@@ -885,6 +1178,106 @@ function injectStyles() {
 
     .mp-pulse {
       animation: pulseOutline 0.6s ease-in-out infinite !important;
+    }
+
+    /* Drawer styles */
+    .mp-drawer {
+      border-top: 1px solid #e8eaed;
+      padding: 0;
+      max-height: 300px;
+      overflow-y: auto;
+      background: white;
+      flex-shrink: 0;
+    }
+
+    .mp-drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e8eaed;
+      font-weight: 600;
+      font-size: 12px;
+      color: #202124;
+    }
+
+    .mp-drawer-close {
+      background: none;
+      border: none;
+      font-size: 16px;
+      color: #5f6368;
+      cursor: pointer;
+      padding: 0;
+      width: 24px;
+      height: 24px;
+    }
+
+    .mp-drawer-close:hover {
+      color: #202124;
+    }
+
+    .mp-drawer-content {
+      padding: 12px;
+    }
+
+    .mp-drawer-section {
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .mp-drawer-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .mp-drawer-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #5f6368;
+      text-transform: uppercase;
+    }
+
+    .mp-drawer-input-group {
+      display: flex;
+      gap: 4px;
+      align-items: stretch;
+    }
+
+    .mp-drawer-item {
+      transition: background 0.2s;
+    }
+
+    .mp-drawer-item:hover {
+      background: #f8f9fa;
+    }
+
+    .mp-drawer-item:last-child {
+      border-bottom: none;
+    }
+
+    .mp-drawer-toggle {
+      background: none;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0;
+      color: #5f6368;
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mp-drawer-toggle:hover {
+      color: #202124;
+    }
+
+    .mp-container {
+      display: flex;
+      flex-direction: column;
     }
   `;
   document.head.appendChild(style);
