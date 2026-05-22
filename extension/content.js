@@ -1,5 +1,6 @@
 let currentAgenda = [];
 let currentIndex = 0;
+let isScreenSharing = false;
 
 // Listen for messages from background
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -36,13 +37,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function detectMeetingJoined() {
   const isMeetingActive = () => {
     // Check for various indicators that a meeting is active
-    // Look for video elements, participant grid, or meeting controls
-    return !!(
-      document.querySelector('[role="main"]') && // Main meeting area
-      (document.querySelector('video') || // Video stream
-        document.querySelector('[aria-label*="participant"]') || // Participant list
-        document.querySelector('[aria-label*="Leave call"]')) // Leave button
-    );
+    const mainArea = document.querySelector('[role="main"]');
+    if (!mainArea) return false;
+
+    // Primary indicators
+    const hasVideo = !!document.querySelector('video');
+    const hasParticipantList = !!document.querySelector('[aria-label*="participant"]');
+    const hasLeaveButton = !!document.querySelector('[aria-label*="Leave call"]');
+
+    // Secondary indicators (video grid, call info header)
+    const hasVideoGrid = !!document.querySelector('[data-video-grid]') ||
+                         !!document.querySelector('[role="presentation"]'); // Meet's grid container
+    const hasCallInfo = !!document.querySelector('[aria-label*="meeting details"]') ||
+                        !!document.querySelector('[aria-label*="duration"]');
+
+    // Meeting is active if we have any combination of indicators
+    const primaryMatch = hasVideo || hasParticipantList || hasLeaveButton;
+    const hasSecondaryMatch = hasVideoGrid || hasCallInfo;
+
+    return primaryMatch || (mainArea && hasSecondaryMatch);
   };
 
   const observer = new MutationObserver(() => {
@@ -86,6 +99,7 @@ function injectOverlay() {
         <button class="mp-btn-prev" disabled>← Prev</button>
         <button class="mp-btn-next" disabled>Next →</button>
       </div>
+      <div class="mp-suggestion-area" style="display: none; padding: 12px 16px; border-top: 1px solid #e8eaed; background: #f8f9fa; font-size: 12px; color: #202124; line-height: 1.4;"></div>
     </div>
   `;
   document.body.appendChild(overlay);
@@ -97,6 +111,11 @@ function injectOverlay() {
       overlay.style.left = x + 'px';
       overlay.style.top = y + 'px';
     }
+  });
+
+  // Load borderPulse setting
+  chrome.storage.sync.get(['borderPulse'], (result) => {
+    overlay.dataset.borderPulseEnabled = result.borderPulse !== false ? 'true' : 'false';
   });
 
   // Inject styles
@@ -121,6 +140,33 @@ function injectOverlay() {
   // Set up prev button
   overlay.querySelector('.mp-btn-prev').addEventListener('click', () => {
     chrome.runtime.sendMessage({ action: 'previousItem' });
+  });
+
+  // Set up wrap-up button
+  chrome.storage.sync.get(['apiKey'], (result) => {
+    const wrapupBtn = document.createElement('button');
+    wrapupBtn.className = 'mp-btn-wrapup';
+    wrapupBtn.textContent = '🎬 Wrap Up';
+    wrapupBtn.title = 'Get AI suggestions for closing this agenda item';
+
+    const controls = overlay.querySelector('.mp-controls');
+    controls.appendChild(wrapupBtn);
+
+    wrapupBtn.addEventListener('click', () => {
+      if (!result.apiKey) {
+        showSuggestion(overlay, 'Please set your Claude API key in settings', 'error');
+        return;
+      }
+
+      generateWrapupSuggestion(overlay, currentAgenda, currentIndex, result.apiKey);
+    });
+
+    // Initially disable if no API key
+    if (!result.apiKey) {
+      wrapupBtn.disabled = true;
+      wrapupBtn.style.opacity = '0.5';
+      wrapupBtn.style.cursor = 'not-allowed';
+    }
   });
 
   // Set up dragging
@@ -192,9 +238,38 @@ function renderAgendaItems(overlay) {
   `;
 }
 
+function isUserScreenSharing() {
+  // Check for "Stop sharing" button or screen share indicator
+  const hasStopSharingBtn = !!document.querySelector('[aria-label*="Stop sharing"]') ||
+                            !!document.querySelector('[aria-label*="sharing"]');
+  return hasStopSharingBtn;
+}
+
+function updateOverlayVisibility() {
+  const overlay = document.getElementById('meeting-progress-overlay');
+  if (!overlay) return;
+
+  const newSharingState = isUserScreenSharing();
+
+  // If sharing state changed, update overlay visibility
+  if (newSharingState !== isScreenSharing) {
+    isScreenSharing = newSharingState;
+    if (isScreenSharing) {
+      // User started sharing - hide overlay
+      overlay.style.display = 'none';
+    } else {
+      // User stopped sharing - show overlay
+      overlay.style.display = '';
+    }
+  }
+}
+
 function updateOverlayProgress(agenda, index, overallProgress) {
   const overlay = document.getElementById('meeting-progress-overlay');
   if (!overlay) return;
+
+  // Check screen share state and update visibility
+  updateOverlayVisibility();
 
   const now = Date.now();
   const items = overlay.querySelectorAll('.mp-item');
@@ -232,6 +307,15 @@ function updateOverlayProgress(agenda, index, overallProgress) {
           elapsedEl.textContent = `${minutes}m ${seconds}s`;
         }
 
+        // Check if border pulse setting is enabled and item has <= 60 seconds remaining
+        const borderPulseEnabled = overlay.dataset.borderPulseEnabled === 'true';
+        const secondsRemaining = Math.max(0, (agenda[i].minutes - itemElapsed) * 60);
+        if (borderPulseEnabled && secondsRemaining <= 60 && itemElapsed < agenda[i].minutes) {
+          itemEl.classList.add('mp-pulse');
+        } else {
+          itemEl.classList.remove('mp-pulse');
+        }
+
         // Show over-time badge if this item exceeded its allocated time
         if (itemElapsed > agenda[i].minutes) {
           const overTime = Math.round((itemElapsed - agenda[i].minutes) * 10) / 10;
@@ -240,6 +324,8 @@ function updateOverlayProgress(agenda, index, overallProgress) {
           overtimeEl.classList.add('mp-overtime-badge');
           itemEl.classList.add('mp-item-overtime');
           itemBar.classList.add('mp-fill-overtime');
+          // Remove pulse once item goes overtime
+          itemEl.classList.remove('mp-pulse');
         } else {
           overtimeEl.style.display = 'none';
           itemEl.classList.remove('mp-item-overtime');
@@ -577,6 +663,48 @@ function injectStyles() {
       cursor: not-allowed;
     }
 
+    .mp-btn-wrapup {
+      width: 100%;
+      padding: 8px 12px;
+      background: #1f73e8;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      color: white;
+      transition: all 0.2s;
+      margin-top: 8px;
+    }
+
+    .mp-btn-wrapup:hover:not(:disabled) {
+      background: #1665d0;
+    }
+
+    .mp-btn-wrapup:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .mp-suggestion-area {
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    .mp-suggestion-loading {
+      color: #5f6368;
+      font-style: italic;
+    }
+
+    .mp-suggestion-error {
+      color: #ea4335;
+    }
+
+    .mp-suggestion-success {
+      color: #0f652d;
+      font-weight: 500;
+    }
+
     .mp-container.mp-minimized {
       height: auto;
     }
@@ -592,8 +720,104 @@ function injectStyles() {
     .mp-container.mp-minimized {
       width: 220px;
     }
+
+    @keyframes pulseOutline {
+      0%, 100% {
+        box-shadow: inset 0 0 0 2px rgba(251, 188, 4, 0.8);
+      }
+      50% {
+        box-shadow: inset 0 0 0 2px rgba(251, 188, 4, 0.3);
+      }
+    }
+
+    .mp-pulse {
+      animation: pulseOutline 0.6s ease-in-out infinite !important;
+    }
   `;
   document.head.appendChild(style);
+}
+
+function showSuggestion(overlay, message, type) {
+  const area = overlay.querySelector('.mp-suggestion-area');
+  area.innerHTML = `<div class="mp-suggestion-${type}">${message}</div>`;
+  area.style.display = 'block';
+
+  // Auto-hide after 5 seconds unless it's an error
+  if (type !== 'error') {
+    setTimeout(() => {
+      area.style.display = 'none';
+    }, 5000);
+  }
+}
+
+let lastWrapupCall = 0;
+
+async function generateWrapupSuggestion(overlay, agenda, index, apiKey) {
+  // Debounce: only allow 1 API call every 10 seconds
+  const now = Date.now();
+  if (now - lastWrapupCall < 10000) {
+    showSuggestion(overlay, 'Please wait before requesting another suggestion', 'error');
+    return;
+  }
+  lastWrapupCall = now;
+
+  if (!agenda || index < 0 || index >= agenda.length) {
+    showSuggestion(overlay, 'No current agenda item', 'error');
+    return;
+  }
+
+  const currentItem = agenda[index];
+
+  // Calculate elapsed and remaining time
+  const totalElapsedMs = Date.now() - agenda[0].startTime;
+  const totalElapsedMinutes = totalElapsedMs / (1000 * 60);
+
+  let previousItemsAllocated = 0;
+  for (let i = 0; i < index; i++) {
+    previousItemsAllocated += agenda[i].minutes;
+  }
+
+  const itemElapsed = Math.max(0, totalElapsedMinutes - previousItemsAllocated);
+  const itemRemaining = Math.max(0, currentItem.minutes - itemElapsed);
+
+  showSuggestion(overlay, 'Getting suggestion...', 'loading');
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 100,
+        messages: [
+          {
+            role: 'user',
+            content: `The meeting is discussing "${currentItem.description}". We've spent ${Math.round(itemElapsed)} minutes on this and have ${Math.round(itemRemaining)} minutes remaining. Suggest a brief closing statement in 1 sentence to wrap this up.`
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      if (response.status === 401) {
+        showSuggestion(overlay, 'API key invalid', 'error');
+      } else {
+        showSuggestion(overlay, `API error: ${error.error?.message || 'Unknown error'}`, 'error');
+      }
+      return;
+    }
+
+    const data = await response.json();
+    const suggestion = data.content?.[0]?.text || 'No suggestion generated';
+    showSuggestion(overlay, suggestion, 'success');
+  } catch (error) {
+    showSuggestion(overlay, `Error: ${error.message}`, 'error');
+  }
 }
 
 function makeDraggable(element) {

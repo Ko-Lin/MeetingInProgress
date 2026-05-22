@@ -13,8 +13,16 @@ function loadSettings() {
 }
 
 function saveSettings() {
+  const apiKeyInput = document.getElementById('apiKey').value.trim();
+
+  // Validate API key format if provided (basic check)
+  if (apiKeyInput && !apiKeyInput.startsWith('sk-')) {
+    showStatus('Warning: API key should start with "sk-"', 'warning');
+    // Still save it though, in case format requirements change
+  }
+
   const settings = {
-    apiKey: document.getElementById('apiKey').value,
+    apiKey: apiKeyInput,
     borderPulse: document.getElementById('borderPulse').checked,
     defaultPosition: document.getElementById('position').value
   };
