@@ -260,6 +260,7 @@ function renderAgendaItems(overlay) {
         <div class="mp-progress" style="width: 0%"></div>
       </div>
       <div class="mp-overall-time" style="display: none;"></div>
+      <div class="mp-meeting-times" style="display: none;"></div>
     </div>
   `;
 }
@@ -439,6 +440,30 @@ function updateOverlayProgress(agenda, index, overallProgress) {
 
     timeEl.textContent = timeText;
     timeEl.style.display = 'block';
+
+    // Calculate and display meeting times
+    const startTimeMs = agenda[0].startTime;
+    const startDate = new Date(startTimeMs);
+    const startTimeStr = startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    // Scheduled end time
+    const scheduledEndMs = startTimeMs + (totalDurationMinutes * 60 * 1000);
+    const scheduledEndDate = new Date(scheduledEndMs);
+    const scheduledEndStr = scheduledEndDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    // Actual end time (if running over)
+    const actualEndMs = now;
+    const actualEndDate = new Date(actualEndMs);
+    const actualEndStr = actualEndDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    let timesText = `Started: ${startTimeStr}<br>Ends: ${scheduledEndStr}`;
+    if (overtimeMinutes > 0.1) {
+      timesText += `<br><span style="color: #ea4335;">Actually: ${actualEndStr}</span>`;
+    }
+
+    const timesEl = overlay.querySelector('.mp-meeting-times');
+    timesEl.innerHTML = timesText;
+    timesEl.style.display = 'block';
   }
 
   // Update button states
@@ -676,6 +701,15 @@ function injectStyles() {
     .mp-overall-time.overtime {
       color: #ea4335;
       font-weight: 600;
+    }
+
+    .mp-meeting-times {
+      font-size: 10px;
+      color: #5f6368;
+      text-align: center;
+      margin-top: 8px;
+      line-height: 1.6;
+      font-family: monospace;
     }
 
     .mp-overall-bar {
