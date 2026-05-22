@@ -59,7 +59,6 @@ function setupDrawerHandlers(overlay) {
   const drawerClose = overlay.querySelector('.mp-drawer-close');
   const parseBtn = overlay.querySelector('.mp-overlay-parse-btn');
   const startTimerBtn = overlay.querySelector('.mp-overlay-start-timer-btn');
-  const clearBtn = overlay.querySelector('.mp-overlay-clear-btn');
   const pasteInput = overlay.querySelector('.mp-overlay-paste-input');
   const startTimeInput = overlay.querySelector('.mp-overlay-start-time-input');
   const templateSelect = overlay.querySelector('.mp-overlay-template-select');
@@ -152,13 +151,6 @@ function setupDrawerHandlers(overlay) {
 
   // Start timer
   startTimerBtn.addEventListener('click', () => overlayStartTimer(overlay));
-
-  // Clear all
-  clearBtn.addEventListener('click', () => {
-    if (confirm('Clear all agenda items?')) {
-      overlayAgendaClearAll(overlay);
-    }
-  });
 }
 
 function loadTemplatesIntoDropdown(selectElement) {
@@ -284,32 +276,6 @@ function overlayDeleteItem(overlay, itemId) {
   currentAgenda = currentAgenda.filter((item) => item.id !== itemId);
   chrome.storage.sync.set({ agenda: currentAgenda });
   renderAgendaItems(overlay);
-}
-
-function overlayAgendaClearAll(overlay) {
-  console.log('[Meeting Progress] Clear All clicked - currentAgenda before:', currentAgenda);
-
-  // Stop the timer if it's running
-  chrome.runtime.sendMessage({ action: 'stopTimer' }, (response) => {
-    console.log('[Meeting Progress] Timer stopped');
-  });
-
-  currentAgenda = [];
-  console.log('[Meeting Progress] Clear All - currentAgenda after:', currentAgenda);
-
-  // Save to storage
-  chrome.storage.sync.set({ agenda: [] }, () => {
-    console.log('[Meeting Progress] Agenda cleared from storage');
-  });
-
-  // Clear all input fields in the drawer
-  const pasteInput = overlay.querySelector('.mp-overlay-paste-input');
-
-  if (pasteInput) pasteInput.value = '';
-
-  // Re-render the agenda display
-  renderAgendaItems(overlay);
-  console.log('[Meeting Progress] Cleared all agenda items and inputs');
 }
 
 function overlayStartTimer(overlay) {
@@ -471,7 +437,6 @@ function injectOverlay() {
           <!-- Start Timer Section -->
           <div class="mp-drawer-section">
             <button class="mp-overlay-start-timer-btn" style="width: 100%; padding: 8px 12px; background: #1f73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;">Start Timer</button>
-            <button class="mp-overlay-clear-btn" style="width: 100%; padding: 8px 12px; background: white; color: #d33b27; border: 1px solid #d33b27; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; margin-top: 6px;">Clear All</button>
           </div>
         </div>
       </div>
