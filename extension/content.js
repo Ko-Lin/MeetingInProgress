@@ -254,16 +254,6 @@ function overlayParseAndAdd(overlay) {
 }
 }
 
-function overlayDeleteItem(overlay, itemId) {
-  currentAgenda = currentAgenda.filter((item) => item.id !== itemId);
-  const storageData = { agenda: currentAgenda };
-  if (currentAgenda.meetingEndTime) {
-    storageData.meetingEndTime = currentAgenda.meetingEndTime;
-  }
-  chrome.storage.sync.set(storageData);
-  renderAgendaItems(overlay);
-}
-
 function overlayStartTimer(overlay) {
   if (currentAgenda.length === 0) return;
 
@@ -552,7 +542,6 @@ function renderAgendaItems(overlay) {
           <span class="mp-item-divider">/</span>
           <span class="mp-item-time">${item.minutes}m</span>
           <span class="mp-item-overtime" style="display: none;"></span>
-          <button class="mp-item-delete" data-item-id="${item.id}" title="Delete item" style="background: none; border: none; color: #ea4335; cursor: pointer; padding: 0; margin-left: 4px; font-size: 14px;">✕</button>
         </div>
       </div>
       <div class="mp-item-progress">
@@ -578,33 +567,8 @@ function renderAgendaItems(overlay) {
       <div class="mp-meeting-times" style="display: none;"></div>
     </div>
   `;
-
-  // Add delete button handlers
-  const deleteButtons = content.querySelectorAll('.mp-item-delete');
-  deleteButtons.forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const itemId = parseFloat(btn.dataset.itemId);
-      deleteAgendaItemFromOverlay(itemId);
-    });
-  });
 }
 
-function deleteAgendaItemFromOverlay(itemId) {
-  // Remove item from currentAgenda
-  currentAgenda = currentAgenda.filter((item) => item.id !== itemId);
-
-  // Save updated agenda
-  chrome.storage.sync.set({ agenda: currentAgenda });
-
-  // Re-render the agenda items
-  const overlay = document.getElementById('meeting-progress-overlay');
-  if (overlay) {
-    renderAgendaItems(overlay);
-  }
-
-  console.log(`[Meeting Progress] Item ${itemId} deleted from overlay`);
-}
 
 function isUserScreenSharing() {
   // Check for "Stop sharing" button or screen share indicator
