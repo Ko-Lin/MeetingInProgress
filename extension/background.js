@@ -75,8 +75,18 @@ function updateOverlay() {
 
   const now = Date.now();
 
-  // Calculate total time allocated
-  const totalMinutes = currentAgenda.reduce((sum, item) => sum + item.minutes, 0);
+  // Calculate total time allocated to agenda items
+  const agendaDurationMinutes = currentAgenda.reduce((sum, item) => sum + item.minutes, 0);
+
+  // Calculate total meeting duration (if meeting end time is set)
+  let totalMeetingMinutes = agendaDurationMinutes;
+  if (currentAgenda.meetingEndTime) {
+    const [endHours, endMinutes] = currentAgenda.meetingEndTime.split(':').map(Number);
+    const startDate = new Date(currentAgenda[0].startTime);
+    const endDate = new Date(currentAgenda[0].startTime);
+    endDate.setHours(endHours, endMinutes, 0, 0);
+    totalMeetingMinutes = (endDate.getTime() - currentAgenda[0].startTime) / (1000 * 60);
+  }
 
   // Calculate actual elapsed time since meeting started
   const totalElapsedMs = now - currentAgenda[0].startTime;
@@ -98,9 +108,9 @@ function updateOverlay() {
   // If elapsed time exceeds all items, show last item as active; if less, use calculated index
   const effectiveIndex = (totalElapsedMinutes >= totalMinutes) ? currentAgenda.length - 1 : autoIndex;
 
-  // Overall progress is based on total elapsed time, not affected by navigation
+  // Overall progress is based on total meeting duration, not just agenda
   // Continue counting into overtime (don't cap at 1.0)
-  const overallProgress = totalElapsedMinutes / totalMinutes;
+  const overallProgress = totalElapsedMinutes / totalMeetingMinutes;
 
   chrome.tabs.query({ url: 'https://meet.google.com/*' }, (tabs) => {
     tabs.forEach((tab) => {
