@@ -37,29 +37,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 function detectMeetingJoined() {
   const isMeetingActive = () => {
     // Check for various indicators that a meeting is active
-    const mainArea = document.querySelector('[role="main"]');
-    if (!mainArea) return false;
+    // Be more lenient with detection - Google Meet DOM can vary
 
-    // Primary indicators
+    // Check for video element (primary indicator)
     const hasVideo = !!document.querySelector('video');
-    const hasParticipantList = !!document.querySelector('[aria-label*="participant"]');
-    const hasLeaveButton = !!document.querySelector('[aria-label*="Leave call"]');
 
-    // Secondary indicators (video grid, call info header)
-    const hasVideoGrid = !!document.querySelector('[data-video-grid]') ||
-                         !!document.querySelector('[role="presentation"]'); // Meet's grid container
-    const hasCallInfo = !!document.querySelector('[aria-label*="meeting details"]') ||
-                        !!document.querySelector('[aria-label*="duration"]');
+    // Check for various leave/end call buttons
+    const hasLeaveButton = !!document.querySelector('[aria-label*="Leave call"]') ||
+                           !!document.querySelector('[aria-label*="End call"]') ||
+                           !!document.querySelector('[aria-label*="leave"]');
 
-    // Meeting is active if we have any combination of indicators
-    const primaryMatch = hasVideo || hasParticipantList || hasLeaveButton;
-    const hasSecondaryMatch = hasVideoGrid || hasCallInfo;
+    // Check for participant elements
+    const hasParticipants = !!document.querySelector('[aria-label*="participant"]') ||
+                            !!document.querySelector('[data-participant-id]') ||
+                            document.querySelectorAll('video').length > 0;
 
-    return primaryMatch || (mainArea && hasSecondaryMatch);
+    // Check for meet's main container (various possible selectors)
+    const hasMainArea = !!document.querySelector('[role="main"]') ||
+                        !!document.querySelector('[jsname="DvxXL"]') || // Meet's main container class
+                        !!document.querySelector('[data-is-presenter]');
+
+    // Check for call controls (microphone, camera, etc.)
+    const hasCallControls = !!document.querySelector('[aria-label*="microphone"]') ||
+                            !!document.querySelector('[aria-label*="camera"]') ||
+                            !!document.querySelector('[aria-label*="mute"]');
+
+    // If we're on meet.google.com and see multiple indicators, likely in a call
+    const indicators = [hasVideo, hasLeaveButton, hasParticipants, hasMainArea, hasCallControls].filter(Boolean).length;
+
+    return indicators >= 2; // At least 2 indicators suggest we're in a meeting
   };
 
   const observer = new MutationObserver(() => {
     if (isMeetingActive() && !document.getElementById('meeting-progress-overlay')) {
+      console.log('[Meeting Progress] Meeting detected, injecting overlay');
       injectOverlay();
       observer.disconnect();
     }
@@ -73,11 +84,15 @@ function detectMeetingJoined() {
 
   // Also check immediately
   if (isMeetingActive() && !document.getElementById('meeting-progress-overlay')) {
+    console.log('[Meeting Progress] Meeting detected immediately, injecting overlay');
     injectOverlay();
+  } else if (location.hostname === 'meet.google.com') {
+    console.log('[Meeting Progress] On meet.google.com but no active meeting detected yet. Waiting...');
   }
 }
 
 function injectOverlay() {
+  console.log('[Meeting Progress] Injecting overlay...');
   const overlay = document.createElement('div');
   overlay.id = 'meeting-progress-overlay';
   overlay.innerHTML = `
@@ -187,6 +202,8 @@ function injectOverlay() {
       renderAgendaItems(overlay);
     }
   });
+
+  console.log('[Meeting Progress] Overlay injected successfully');
 }
 
 function renderAgendaItems(overlay) {
