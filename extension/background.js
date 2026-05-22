@@ -18,6 +18,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'stopTimer') {
     stopTimer();
     sendResponse({ success: true });
+  } else if (request.action === 'getTimerStatus') {
+    sendResponse({ timerRunning });
   }
 });
 

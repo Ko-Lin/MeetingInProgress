@@ -1,7 +1,10 @@
 let agenda = [];
 
 // Load agenda on popup open
-document.addEventListener('DOMContentLoaded', loadAgenda);
+document.addEventListener('DOMContentLoaded', () => {
+  loadAgenda();
+  checkTimerStatus();
+});
 
 // Event listeners
 document.getElementById('addBtn').addEventListener('click', addItem);
@@ -133,6 +136,19 @@ function saveAgenda() {
   chrome.storage.sync.set({ agenda });
 }
 
+function checkTimerStatus() {
+  // Check if timer is already running in background
+  chrome.runtime.sendMessage({ action: 'getTimerStatus' }, (response) => {
+    if (response?.timerRunning) {
+      const startBtn = document.getElementById('startBtn');
+      startBtn.disabled = true;
+      startBtn.textContent = 'Timer Running...';
+      startBtn.style.opacity = '0.6';
+      startBtn.style.cursor = 'not-allowed';
+    }
+  });
+}
+
 function startTimer() {
   if (agenda.length === 0) return;
 
@@ -147,7 +163,16 @@ function startTimer() {
   saveAgenda();
 
   // Send message to background to start timer
-  chrome.runtime.sendMessage({ action: 'startTimer', agenda });
+  chrome.runtime.sendMessage({ action: 'startTimer', agenda }, (response) => {
+    if (response?.success) {
+      // Update button state
+      const startBtn = document.getElementById('startBtn');
+      startBtn.disabled = true;
+      startBtn.textContent = 'Timer Running...';
+      startBtn.style.opacity = '0.6';
+      startBtn.style.cursor = 'not-allowed';
+    }
+  });
 }
 
 function openSettings() {
