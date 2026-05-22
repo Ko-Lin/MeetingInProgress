@@ -361,8 +361,6 @@ function injectOverlay() {
           <div class="mp-progress" style="width: 0%"></div>
         </div>
       </div>
-      <div class="mp-suggestion-area" style="display: none; padding: 12px 16px; border-top: 1px solid #e8eaed; background: #f8f9fa; font-size: 12px; color: #202124; line-height: 1.4;"></div>
-
       <!-- Side drawer for agenda management -->
       <div class="mp-side-drawer" style="display: none;">
         <div class="mp-drawer-header">
@@ -441,32 +439,6 @@ function injectOverlay() {
   });
 
   // Set up wrap-up button
-  chrome.storage.sync.get(['apiKey'], (result) => {
-    const wrapupBtn = document.createElement('button');
-    wrapupBtn.className = 'mp-btn-wrapup';
-    wrapupBtn.textContent = '🎬 Wrap Up';
-    wrapupBtn.title = 'Get AI suggestions for closing this agenda item';
-
-    const controls = overlay.querySelector('.mp-controls');
-    controls.appendChild(wrapupBtn);
-
-    wrapupBtn.addEventListener('click', () => {
-      if (!result.apiKey) {
-        showSuggestion(overlay, 'Please set your Claude API key in settings', 'error');
-        return;
-      }
-
-      generateWrapupSuggestion(overlay, currentAgenda, currentIndex, result.apiKey);
-    });
-
-    // Initially disable if no API key
-    if (!result.apiKey) {
-      wrapupBtn.disabled = true;
-      wrapupBtn.style.opacity = '0.5';
-      wrapupBtn.style.cursor = 'not-allowed';
-    }
-  });
-
   // Set up dragging
   makeDraggable(overlay);
 
@@ -1090,48 +1062,6 @@ function injectStyles() {
       cursor: not-allowed;
     }
 
-    .mp-btn-wrapup {
-      width: 100%;
-      padding: 8px 12px;
-      background: #1f73e8;
-      border: none;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      color: white;
-      transition: all 0.2s;
-      margin-top: 8px;
-    }
-
-    .mp-btn-wrapup:hover:not(:disabled) {
-      background: #1665d0;
-    }
-
-    .mp-btn-wrapup:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .mp-suggestion-area {
-      max-height: 120px;
-      overflow-y: auto;
-    }
-
-    .mp-suggestion-loading {
-      color: #5f6368;
-      font-style: italic;
-    }
-
-    .mp-suggestion-error {
-      color: #ea4335;
-    }
-
-    .mp-suggestion-success {
-      color: #0f652d;
-      font-weight: 500;
-    }
-
     .mp-container.mp-minimized {
       height: auto;
       width: 300px;
@@ -1146,10 +1076,6 @@ function injectStyles() {
     }
 
     .mp-container.mp-minimized .mp-overall-section {
-      display: none;
-    }
-
-    .mp-container.mp-minimized .mp-suggestion-area {
       display: none;
     }
 
@@ -1347,89 +1273,6 @@ function injectStyles() {
     }
   `;
   document.head.appendChild(style);
-}
-
-function showSuggestion(overlay, message, type) {
-  const area = overlay.querySelector('.mp-suggestion-area');
-  area.innerHTML = `<div class="mp-suggestion-${type}">${message}</div>`;
-  area.style.display = 'block';
-
-  // Auto-hide after 5 seconds unless it's an error
-  if (type !== 'error') {
-    setTimeout(() => {
-      area.style.display = 'none';
-    }, 5000);
-  }
-}
-
-let lastWrapupCall = 0;
-
-async function generateWrapupSuggestion(overlay, agenda, index, apiKey) {
-  // Debounce: only allow 1 API call every 10 seconds
-  const now = Date.now();
-  if (now - lastWrapupCall < 10000) {
-    showSuggestion(overlay, 'Please wait before requesting another suggestion', 'error');
-    return;
-  }
-  lastWrapupCall = now;
-
-  if (!agenda || index < 0 || index >= agenda.length) {
-    showSuggestion(overlay, 'No current agenda item', 'error');
-    return;
-  }
-
-  const currentItem = agenda[index];
-
-  // Calculate elapsed and remaining time
-  const totalElapsedMs = Date.now() - agenda[0].startTime;
-  const totalElapsedMinutes = totalElapsedMs / (1000 * 60);
-
-  let previousItemsAllocated = 0;
-  for (let i = 0; i < index; i++) {
-    previousItemsAllocated += agenda[i].minutes;
-  }
-
-  const itemElapsed = Math.max(0, totalElapsedMinutes - previousItemsAllocated);
-  const itemRemaining = Math.max(0, currentItem.minutes - itemElapsed);
-
-  showSuggestion(overlay, 'Getting suggestion...', 'loading');
-
-  try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 100,
-        messages: [
-          {
-            role: 'user',
-            content: `The meeting is discussing "${currentItem.description}". We've spent ${Math.round(itemElapsed)} minutes on this and have ${Math.round(itemRemaining)} minutes remaining. Suggest a brief closing statement in 1 sentence to wrap this up.`
-          }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      if (response.status === 401) {
-        showSuggestion(overlay, 'API key invalid', 'error');
-      } else {
-        showSuggestion(overlay, `API error: ${error.error?.message || 'Unknown error'}`, 'error');
-      }
-      return;
-    }
-
-    const data = await response.json();
-    const suggestion = data.content?.[0]?.text || 'No suggestion generated';
-    showSuggestion(overlay, suggestion, 'success');
-  } catch (error) {
-    showSuggestion(overlay, `Error: ${error.message}`, 'error');
-  }
 }
 
 function extractMeetingDescription() {

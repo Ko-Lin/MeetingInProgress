@@ -9,24 +9,14 @@ document.addEventListener('DOMContentLoaded', () => {
 document.getElementById('saveBtn').addEventListener('click', saveSettings);
 
 function loadSettings() {
-  chrome.storage.sync.get(['apiKey', 'borderPulse', 'defaultPosition'], (result) => {
-    document.getElementById('apiKey').value = result.apiKey || '';
+  chrome.storage.sync.get(['borderPulse', 'defaultPosition'], (result) => {
     document.getElementById('borderPulse').checked = result.borderPulse !== false;
     document.getElementById('position').value = result.defaultPosition || 'top-right';
   });
 }
 
 function saveSettings() {
-  const apiKeyInput = document.getElementById('apiKey').value.trim();
-
-  // Validate API key format if provided (basic check)
-  if (apiKeyInput && !apiKeyInput.startsWith('sk-')) {
-    showStatus('Warning: API key should start with "sk-"', 'warning');
-    // Still save it though, in case format requirements change
-  }
-
   const settings = {
-    apiKey: apiKeyInput,
     borderPulse: document.getElementById('borderPulse').checked,
     defaultPosition: document.getElementById('position').value
   };
