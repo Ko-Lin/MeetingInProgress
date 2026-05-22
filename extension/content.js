@@ -30,6 +30,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     injectOverlay();
     sendResponse({ success: true });
+  } else if (request.action === 'extractMeetingDescription') {
+    const description = extractMeetingDescription();
+    sendResponse({ success: true, description });
+  } else if (request.action === 'parseDescriptionWithAI') {
+    parseDescriptionWithAI(request.description, request.apiKey, (result) => {
+      sendResponse(result);
+    });
+    return true; // Async response
   }
 });
 
@@ -868,6 +876,116 @@ async function generateWrapupSuggestion(overlay, agenda, index, apiKey) {
     showSuggestion(overlay, suggestion, 'success');
   } catch (error) {
     showSuggestion(overlay, `Error: ${error.message}`, 'error');
+  }
+}
+
+function extractMeetingDescription() {
+  // Try multiple selectors to find the meeting description
+  const selectors = [
+    // Google Meet details panel
+    '[aria-label*="description" i]',
+    '[aria-label*="Details" i]',
+    '[aria-label*="info" i]',
+    // Various Meet DOM structures
+    '[data-tooltip*="description" i]',
+    // Text content that might contain description
+    'div[role="document"]',
+  ];
+
+  for (const selector of selectors) {
+    const element = document.querySelector(selector);
+    if (element) {
+      const text = element.textContent?.trim();
+      if (text && text.length > 20) { // Must be substantial
+        return text;
+      }
+    }
+  }
+
+  // Try to find description in the main content area
+  const mainArea = document.querySelector('[role="main"]');
+  if (mainArea) {
+    const allText = mainArea.textContent;
+    // Look for common patterns like "Agenda:" or bullet points
+    if (allText && allText.includes('agenda')) {
+      return allText;
+    }
+  }
+
+  return null;
+}
+
+async function parseDescriptionWithAI(description, apiKey, callback) {
+  if (!description) {
+    callback({ success: false, error: 'No description found' });
+    return;
+  }
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 500,
+        messages: [
+          {
+            role: 'user',
+            content: `Extract agenda items from this meeting description. Return a JSON array with objects like {description: "item name", minutes: estimated_minutes}.
+
+Only return the JSON array, no other text. If no specific times are mentioned, estimate 5-10 minutes per item.
+
+Meeting description:
+${description}`
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      callback({
+        success: false,
+        error: error.error?.message || 'API error'
+      });
+      return;
+    }
+
+    const data = await response.json();
+    const responseText = data.content?.[0]?.text || '';
+
+    // Parse the JSON response
+    try {
+      const agenda = JSON.parse(responseText);
+      if (Array.isArray(agenda)) {
+        callback({
+          success: true,
+          agenda: agenda.map(item => ({
+            description: item.description || item.name || '',
+            minutes: parseInt(item.minutes) || 5
+          })).filter(item => item.description)
+        });
+      } else {
+        callback({
+          success: false,
+          error: 'Invalid response format'
+        });
+      }
+    } catch (e) {
+      callback({
+        success: false,
+        error: 'Failed to parse AI response'
+      });
+    }
+  } catch (error) {
+    callback({
+      success: false,
+      error: error.message
+    });
   }
 }
 

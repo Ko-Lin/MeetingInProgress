@@ -13,6 +13,7 @@ document.getElementById('startBtn').addEventListener('click', startTimer);
 document.getElementById('clearBtn').addEventListener('click', clearAgenda);
 document.getElementById('settingsBtn').addEventListener('click', openSettings);
 document.getElementById('injectBtn').addEventListener('click', manualInject);
+document.getElementById('importDescBtn').addEventListener('click', importFromDescription);
 
 function loadAgenda() {
   chrome.storage.sync.get(['agenda'], (result) => {
@@ -161,6 +162,82 @@ function manualInject() {
       if (chrome.runtime.lastError) {
         // Silently handle error
       }
+    });
+  });
+}
+
+function importFromDescription() {
+  const importBtn = document.getElementById('importDescBtn');
+  if (!importBtn) return;
+
+  importBtn.disabled = true;
+  importBtn.textContent = 'Importing...';
+
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs || !tabs[0] || !tabs[0].url?.includes('meet.google.com')) {
+      importBtn.disabled = false;
+      importBtn.textContent = '📋 Import from Description';
+      alert('Please run this from a Google Meet tab');
+      return;
+    }
+
+    // Step 1: Extract description from the Meet page
+    chrome.tabs.sendMessage(tabs[0].id, { action: 'extractMeetingDescription' }, (response) => {
+      if (chrome.runtime.lastError || !response?.description) {
+        importBtn.disabled = false;
+        importBtn.textContent = '📋 Import from Description';
+        alert('No meeting description found. Please open meeting details first.');
+        return;
+      }
+
+      // Step 2: Get API key and parse with Claude
+      chrome.storage.sync.get(['apiKey'], (result) => {
+        if (!result.apiKey) {
+          importBtn.disabled = false;
+          importBtn.textContent = '📋 Import from Description';
+          alert('API key not set. Please configure it in settings.');
+          return;
+        }
+
+        chrome.tabs.sendMessage(
+          tabs[0].id,
+          {
+            action: 'parseDescriptionWithAI',
+            description: response.description,
+            apiKey: result.apiKey
+          },
+          (parseResponse) => {
+            importBtn.disabled = false;
+            importBtn.textContent = '📋 Import from Description';
+
+            if (!parseResponse?.success) {
+              alert(`Error: ${parseResponse?.error || 'Failed to parse description'}`);
+              return;
+            }
+
+            // Step 3: Add parsed items to agenda
+            const parsedItems = parseResponse.agenda || [];
+            let added = 0;
+
+            parsedItems.forEach((item) => {
+              if (item.description && item.minutes > 0) {
+                agenda.push({
+                  id: Date.now() + Math.random(),
+                  description: item.description,
+                  minutes: item.minutes,
+                  startTime: null
+                });
+                added++;
+              }
+            });
+
+            if (added > 0) {
+              saveAgenda();
+              renderAgenda();
+            }
+          }
+        );
+      });
     });
   });
 }
