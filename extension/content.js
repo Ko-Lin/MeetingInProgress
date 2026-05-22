@@ -1392,49 +1392,60 @@ async function generateWrapupSuggestion(overlay, agenda, index, apiKey) {
 }
 
 function extractMeetingDescription() {
-  // Try multiple approaches to find meeting description
+  console.log('[Meeting Progress] Starting description extraction...');
 
-  // Approach 1: Look for description text in various panels
-  const textElements = document.querySelectorAll('span, div, p');
-  let descriptionText = null;
+  // Approach 1: Look for meeting info panel / details area
+  // Google Meet stores description in the details panel
+  const detailsPanel = document.querySelector('[aria-label*="Details"]') ||
+                      document.querySelector('[aria-label*="details"]') ||
+                      document.querySelector('[role="region"][aria-label*="details" i]');
 
-  for (const element of textElements) {
+  if (detailsPanel) {
+    const text = detailsPanel.textContent?.trim();
+    if (text && text.length > 0) {
+      console.log('[Meeting Progress] Found description in details panel');
+      return text;
+    }
+  }
+
+  // Approach 2: Look in the right panel area
+  const rightPanel = document.querySelector('[data-is-open-right-panel="true"]') ||
+                    document.querySelector('[jsname="FDy41c"]'); // Google Meet's right panel class
+
+  if (rightPanel) {
+    const text = rightPanel.textContent?.trim();
+    if (text && text.length > 20) {
+      console.log('[Meeting Progress] Found description in right panel');
+      return text;
+    }
+  }
+
+  // Approach 3: Search for text containing agenda-like keywords
+  console.log('[Meeting Progress] Searching for agenda-like text...');
+  const allElements = document.querySelectorAll('span, div, p, li');
+
+  for (const element of allElements) {
     const text = element.textContent?.trim();
 
-    // Look for paragraphs that contain agenda-like content
-    if (text && text.length > 30 && text.length < 2000) {
-      // Check if it looks like an agenda (has numbers, bullet points, or common keywords)
-      if (/(\d+\s*min|•|agenda|topics?|items?|discussion|agenda items|outline|points|schedule)/i.test(text)) {
-        // Make sure it's not just the UI controls
-        if (!/^(meeting|invite|details|copy|phone|dial-in|more|attachments|all|description)/i.test(text)) {
-          descriptionText = text;
-          break;
-        }
-      }
+    if (!text || text.length < 20 || text.length > 3000) continue;
+
+    // Look for elements that contain time specifications
+    if (/\d+\s*min/i.test(text)) {
+      console.log('[Meeting Progress] Found text with time specification');
+      return text;
     }
   }
 
-  // Approach 2: Try to find in details panel specifically
-  if (!descriptionText) {
-    const detailsPanel = document.querySelector('[aria-label*="details" i]');
-    if (detailsPanel) {
-      descriptionText = detailsPanel.textContent?.trim();
-    }
+  // Approach 4: Look for description after "Description" label
+  const allText = document.body.innerText;
+  const descriptionMatch = allText.match(/description\s*[:\-]?\s*(.+?)(?=\n\n|\ndate|\ntime|$)/is);
+  if (descriptionMatch) {
+    console.log('[Meeting Progress] Found description using text matching');
+    return descriptionMatch[1].trim();
   }
 
-  // Approach 3: Look for any substantial text block that might be description
-  if (!descriptionText) {
-    const allDivs = document.querySelectorAll('div[style*="color"], span');
-    for (const div of allDivs) {
-      const text = div.textContent?.trim();
-      if (text && text.length > 50 && text.includes('\n')) {
-        descriptionText = text;
-        break;
-      }
-    }
-  }
-
-  return descriptionText || null;
+  console.log('[Meeting Progress] No description found');
+  return null;
 }
 
 function parseDescriptionToAgenda(description) {
