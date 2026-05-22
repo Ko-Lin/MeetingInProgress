@@ -221,44 +221,69 @@ function overlayImportFromDescription(overlay) {
   importBtn.disabled = true;
   importBtn.textContent = 'Importing...';
 
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (!tabs || !tabs[0]) {
-      importBtn.disabled = false;
-      importBtn.textContent = '📋 Import from Description';
-      return;
-    }
+  // Timeout to prevent button from being stuck
+  const timeout = setTimeout(() => {
+    importBtn.disabled = false;
+    importBtn.textContent = '📋 Import from Description';
+    console.log('[Meeting Progress] Import timeout - no response from content script');
+  }, 5000);
 
-    chrome.tabs.sendMessage(tabs[0].id, { action: 'extractMeetingDescription' }, (response) => {
-      importBtn.disabled = false;
-      importBtn.textContent = '📋 Import from Description';
-
-      if (chrome.runtime.lastError || !response?.success) {
-        console.log('[Meeting Progress] Failed to extract description');
+  try {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs || !tabs[0]) {
+        clearTimeout(timeout);
+        importBtn.disabled = false;
+        importBtn.textContent = '📋 Import from Description';
+        console.log('[Meeting Progress] No active tab found');
         return;
       }
 
-      const items = response.items || [];
-      let added = 0;
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'extractMeetingDescription' }, (response) => {
+        clearTimeout(timeout);
+        importBtn.disabled = false;
+        importBtn.textContent = '📋 Import from Description';
 
-      items.forEach((item) => {
-        if (item.description && item.minutes > 0) {
-          currentAgenda.push({
-            id: Date.now() + Math.random(),
-            description: item.description,
-            minutes: item.minutes,
-            startTime: null
-          });
-          added++;
+        if (chrome.runtime.lastError) {
+          console.log('[Meeting Progress] Message error:', chrome.runtime.lastError);
+          return;
+        }
+
+        if (!response?.success) {
+          console.log('[Meeting Progress] Failed to extract description:', response?.error);
+          return;
+        }
+
+        const items = response.items || [];
+        let added = 0;
+
+        items.forEach((item) => {
+          if (item.description && item.minutes > 0) {
+            currentAgenda.push({
+              id: Date.now() + Math.random(),
+              description: item.description,
+              minutes: item.minutes,
+              startTime: null
+            });
+            added++;
+          }
+        });
+
+        if (added > 0) {
+          console.log(`[Meeting Progress] Imported ${added} items from description`);
+          chrome.storage.sync.set({ agenda: currentAgenda });
+          renderDrawerAgendaList(overlay);
+          renderAgendaItems(overlay);
+        } else {
+          console.log('[Meeting Progress] No items found in description');
         }
       });
-
-      if (added > 0) {
-        chrome.storage.sync.set({ agenda: currentAgenda });
-        renderDrawerAgendaList(overlay);
-        renderAgendaItems(overlay);
-      }
     });
-  });
+  } catch (error) {
+    clearTimeout(timeout);
+    importBtn.disabled = false;
+    importBtn.textContent = '📋 Import from Description';
+    console.error('[Meeting Progress] Error during import:', error);
+  }
 }
 
 function overlayStartTimer(overlay) {
