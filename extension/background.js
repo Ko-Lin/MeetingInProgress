@@ -104,9 +104,9 @@ function updateOverlay() {
     }
   }
 
-  // Use auto-calculated index (unless user manually navigated, in which case use currentIndex)
-  // If elapsed time exceeds all items, show last item as active; if less, use calculated index
-  const effectiveIndex = (totalElapsedMinutes >= totalMinutes) ? currentAgenda.length - 1 : autoIndex;
+  // Use auto-calculated index based on elapsed time
+  // If elapsed time exceeds all items, show last item as active
+  const effectiveIndex = (totalElapsedMinutes >= agendaDurationMinutes) ? currentAgenda.length - 1 : autoIndex;
 
   // Overall progress is based on total meeting duration, not just agenda
   // Continue counting into overtime (don't cap at 1.0)

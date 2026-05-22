@@ -539,37 +539,10 @@ function renderAgendaItems(overlay) {
     return;
   }
 
-  // Calculate if there's remaining time after agenda
-  const agendaDurationMinutes = currentAgenda.reduce((sum, item) => sum + item.minutes, 0);
-  let bufferItem = null;
-
-  if (currentAgenda.meetingEndTime) {
-    const [endHours, endMinutes] = currentAgenda.meetingEndTime.split(':').map(Number);
-    const startDate = new Date(currentAgenda[0].startTime);
-    const endDate = new Date(currentAgenda[0].startTime);
-    endDate.setHours(endHours, endMinutes, 0, 0);
-    const totalMeetingMinutes = (endDate.getTime() - currentAgenda[0].startTime) / (1000 * 60);
-    const bufferMinutes = totalMeetingMinutes - agendaDurationMinutes;
-
-    if (bufferMinutes > 1) {
-      bufferItem = {
-        id: 'buffer',
-        description: 'Buffer',
-        minutes: Math.round(bufferMinutes),
-        isBuffer: true
-      };
-    }
-  }
-
-  const agendaToDisplay = [...currentAgenda];
-  if (bufferItem) {
-    agendaToDisplay.push(bufferItem);
-  }
-
-  const agendaHTML = agendaToDisplay
+  const agendaHTML = currentAgenda
     .map(
       (item, index) => `
-    <div class="mp-item ${index === currentIndex ? 'mp-item-active' : ''} ${index < currentIndex ? 'mp-item-completed' : ''} ${item.isBuffer ? 'mp-item-buffer' : ''}" data-item-id="${item.id}">
+    <div class="mp-item ${index === currentIndex ? 'mp-item-active' : ''} ${index < currentIndex ? 'mp-item-completed' : ''}" data-item-id="${item.id}">
       <div class="mp-item-header">
         <div class="mp-item-name">${item.description}</div>
         <div class="mp-item-time-info">
@@ -577,7 +550,7 @@ function renderAgendaItems(overlay) {
           <span class="mp-item-divider">/</span>
           <span class="mp-item-time">${item.minutes}m</span>
           <span class="mp-item-overtime" style="display: none;"></span>
-          ${!item.isBuffer ? `<button class="mp-item-delete" data-item-id="${item.id}" title="Delete item" style="background: none; border: none; color: #ea4335; cursor: pointer; padding: 0; margin-left: 4px; font-size: 14px;">✕</button>` : ''}
+          <button class="mp-item-delete" data-item-id="${item.id}" title="Delete item" style="background: none; border: none; color: #ea4335; cursor: pointer; padding: 0; margin-left: 4px; font-size: 14px;">✕</button>
         </div>
       </div>
       <div class="mp-item-progress">
@@ -785,34 +758,14 @@ function updateOverlayProgress(agenda, index, overallProgress, meetingEndTime) {
     const now = Date.now();
     const totalElapsedMs = now - agenda[0].startTime;
     const totalElapsedMinutes = totalElapsedMs / (1000 * 60);
-    const agendaDurationMinutes = agenda.reduce((sum, item) => sum + item.minutes, 0);
-
-    // Calculate total meeting duration if end time is set
-    let totalMeetingMinutes = agendaDurationMinutes;
-    if (meetingEndTime) {
-      const [endHours, endMinutes] = meetingEndTime.split(':').map(Number);
-      const startDate = new Date(agenda[0].startTime);
-      const endDate = new Date(agenda[0].startTime);
-      endDate.setHours(endHours, endMinutes, 0, 0);
-      totalMeetingMinutes = (endDate.getTime() - agenda[0].startTime) / (1000 * 60);
-    }
+    const totalDurationMinutes = agenda.reduce((sum, item) => sum + item.minutes, 0);
 
     const elapsedMins = Math.floor(totalElapsedMinutes);
     const elapsedSecs = Math.round((totalElapsedMinutes - elapsedMins) * 60);
 
-    // Calculate overtime on meeting (not agenda)
-    const overtimeMinutes = totalElapsedMinutes - totalMeetingMinutes;
-
-    // Format time display
-    let timeText;
-    if (totalMeetingMinutes > agendaDurationMinutes) {
-      // Show meeting time instead of just agenda time
-      const totalMeetingHours = Math.floor(totalMeetingMinutes / 60);
-      const totalMeetingMins = Math.floor(totalMeetingMinutes % 60);
-      timeText = `${elapsedMins}m ${elapsedSecs}s / ${totalMeetingHours}h ${totalMeetingMins}m`;
-    } else {
-      timeText = `${elapsedMins}m ${elapsedSecs}s / ${agendaDurationMinutes}m`;
-    }
+    // Calculate overtime
+    const overtimeMinutes = totalElapsedMinutes - totalDurationMinutes;
+    let timeText = `${elapsedMins}m ${elapsedSecs}s / ${totalDurationMinutes}m`;
 
     const timeEl = overlay.querySelector('.mp-overall-time');
     if (overtimeMinutes > 0.1) { // Show overtime if more than 6 seconds
@@ -994,17 +947,6 @@ function injectStyles() {
     .mp-item-completed {
       border-left-color: #34a853;
       opacity: 0.6;
-    }
-
-    .mp-item-buffer {
-      border-left-color: #dadce0;
-      background: #fafafa;
-      opacity: 0.7;
-    }
-
-    .mp-item-buffer .mp-item-name {
-      color: #9aa0a6;
-      font-style: italic;
     }
 
     .mp-item-header {
